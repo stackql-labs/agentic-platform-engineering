@@ -1,0 +1,38 @@
+-- The human view of the same estate the agent reads. Paste into `stackql shell`
+-- started with the same approot:  stackql shell --approot "$STACKQL_APPROOT"
+-- Replace shop / localhost:8001 if you changed the .env values.
+
+-- the deployments: desired vs ready, and the image each one runs
+SELECT json_extract(metadata, '$.name') AS deployment,
+       json_extract(spec, '$.replicas') AS want,
+       coalesce(json_extract(status, '$.readyReplicas'), 0) AS ready,
+       coalesce(json_extract(status, '$.unavailableReplicas'), 0) AS unavailable,
+       json_extract(spec, '$.template.spec.containers[0].image') AS image
+FROM k8s.apps.deployments
+WHERE namespace = 'shop'
+  AND cluster_addr = 'localhost:8001'
+  AND protocol = 'http';
+
+-- the pods: phase, container state and restarts (one row per container)
+SELECT json_extract(metadata, '$.name') AS pod,
+       json_extract(status, '$.phase') AS phase,
+       json_extract(cs.value, '$.ready') AS ready,
+       json_extract(cs.value, '$.restartCount') AS restarts,
+       coalesce(json_extract(cs.value, '$.state.waiting.reason'), 'Running') AS state
+FROM k8s.core.pods, json_each(json_extract(status, '$.containerStatuses')) AS cs
+WHERE namespace = 'shop'
+  AND cluster_addr = 'localhost:8001'
+  AND protocol = 'http';
+
+-- the Warning events: what the cluster itself says went wrong
+SELECT reason,
+       json_extract(involvedObject, '$.name') AS object,
+       count,
+       lastTimestamp,
+       message
+FROM k8s.core.events
+WHERE namespace = 'shop'
+  AND cluster_addr = 'localhost:8001'
+  AND protocol = 'http'
+  AND type = 'Warning'
+ORDER BY count DESC;

@@ -1,0 +1,123 @@
+#
+# platform-estate - the demo estate as a stackql-deploy stack
+#
+# A `shop` namespace with a two-replica web frontend, a one-replica checkout
+# service and a ClusterIP service, on a local kind cluster reached through
+# `kubectl proxy`. No state file: every build asserts each resource against the
+# live API (exists -> create | statecheck -> update), so a re-run converges
+# whatever a human or an agent changed in between. That is the demo beat:
+# scripts/perturb.sh points the checkout image at a tag that does not exist,
+# the agent finds it, and `stackql-deploy build` puts it back.
+#
+# Build:    stackql-deploy build stack demo --env-file .env --show-queries
+# Dry run:  stackql-deploy build stack demo --env-file .env --dry-run
+# Test:     stackql-deploy test  stack demo --env-file .env
+# Teardown: stackql-deploy teardown stack demo --env-file .env
+#
+# The operator identity is whatever kubeconfig `kubectl proxy` runs with; kind's
+# default admin context has everything this stack needs.
+#
+version: 1
+name: platform-estate
+description: a small Kubernetes estate for the agentic platform engineering demo
+providers:
+  - k8s::v26.08.00453
+
+globals:
+  # how stackql reaches the API server: kubectl proxy on the operator's machine
+  # (scripts/proxy.sh), or the kubectl proxy sidecar when the agent runs in-cluster
+  - name: cluster_addr
+    description: host:port of kubectl proxy
+    value: "{{ KUBE_CLUSTER_ADDR }}"
+  - name: protocol
+    value: "{{ KUBE_PROTOCOL }}"
+  - name: namespace
+    value: "{{ K8S_NAMESPACE }}"
+  - name: demo_label_key
+    description: every resource the stack creates carries this label, and the agent's gate checks for it
+    value: purpose
+  - name: demo_label_value
+    value: agentic-demo
+
+resources:
+
+  - name: namespace
+    description: the demo namespace, labelled so the agent and the teardown can find it
+    props:
+      - name: name
+        value: "{{ namespace }}"
+    exports:
+      - namespace
+
+  - name: web_deployment
+    description: the frontend (nginx), two replicas in demo and three in prd
+    file: deployment.iql
+    props:
+      - name: name
+        value: web
+      - name: tier
+        value: frontend
+      - name: image
+        value: "nginx:1.27-alpine"
+      - name: container_port
+        value: 80
+      - name: replicas
+        values:
+          demo:
+            value: 2
+          prd:
+            value: 3
+      - name: cpu_request
+        value: 50m
+      - name: memory_request
+        value: 64Mi
+      - name: memory_limit
+        value: 128Mi
+
+  - name: web_service
+    description: ClusterIP service in front of web
+    props:
+      - name: name
+        value: web
+      - name: app_label
+        value: web
+      - name: port
+        value: 80
+
+  - name: checkout_deployment
+    description: |
+      the checkout service, one replica. The image is the value scripts/perturb.sh
+      changes; the statecheck below compares it, so a build after the perturb
+      runs the update anchor and converges the image back.
+    file: deployment.iql
+    props:
+      - name: name
+        value: checkout
+      - name: tier
+        value: backend
+      - name: image
+        value: "hashicorp/http-echo:1.0"
+      - name: container_port
+        value: 5678
+      - name: replicas
+        value: 1
+      - name: cpu_request
+        value: 10m
+      - name: memory_request
+        value: 16Mi
+      - name: memory_limit
+        value: 32Mi
+
+  # what the estate looks like once the stack has converged
+  - name: estate_summary
+    type: query
+    props: []
+    sql: |
+      SELECT json_extract(metadata, '$.name') AS deployment,
+             json_extract(spec, '$.replicas') AS want,
+             coalesce(json_extract(status, '$.readyReplicas'), 0) AS ready,
+             json_extract(spec, '$.template.spec.containers[0].image') AS image
+      FROM k8s.apps.deployments
+      WHERE namespace = '{{ namespace }}'
+        AND cluster_addr = '{{ cluster_addr }}'
+        AND protocol = '{{ protocol }}';

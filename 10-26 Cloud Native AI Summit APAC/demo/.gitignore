@@ -1,0 +1,6 @@
+.env
+runs/
+.stackql/
+agent/node_modules/
+*.log
+.stackql-deploy-exports

@@ -1,0 +1,24 @@
+{
+  "name": "platform-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An always-on platform agent: Vercel AI SDK + Claude + the StackQL MCP server",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "agent": "tsx src/agent.ts",
+    "smoke": "tsx src/agent.ts --smoke"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.81",
+    "@ai-sdk/mcp": "^2.0.77",
+    "@stackql/mcp-server": "^0.12.778",
+    "ai": "^7.0.142",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

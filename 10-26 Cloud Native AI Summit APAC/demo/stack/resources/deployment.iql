@@ -1,0 +1,75 @@
+-- shared by web_deployment and checkout_deployment (file: deployment.iql in the manifest)
+
+/*+ exists */
+SELECT COUNT(*) AS count FROM k8s.apps.deployments
+WHERE namespace = '{{ namespace }}'
+  AND cluster_addr = '{{ cluster_addr }}'
+  AND protocol = '{{ protocol }}'
+  AND json_extract(metadata, '$.name') = '{{ name }}'
+
+/*+ create */
+INSERT INTO k8s.apps.deployments(namespace, cluster_addr, protocol, metadata, spec)
+SELECT
+  '{{ namespace }}',
+  '{{ cluster_addr }}',
+  '{{ protocol }}',
+  '{"name": "{{ name }}", "namespace": "{{ namespace }}", "labels": {"app": "{{ name }}", "tier": "{{ tier }}", "{{ demo_label_key }}": "{{ demo_label_value }}", "managed-by": "stackql-deploy"}}',
+  '{
+    "replicas": {{ replicas }},
+    "selector": {"matchLabels": {"app": "{{ name }}"}},
+    "template": {
+      "metadata": {"labels": {"app": "{{ name }}", "tier": "{{ tier }}", "{{ demo_label_key }}": "{{ demo_label_value }}"}},
+      "spec": {"containers": [{
+        "name": "{{ name }}",
+        "image": "{{ image }}",
+        "ports": [{"containerPort": {{ container_port }}, "name": "http"}],
+        "resources": {"requests": {"cpu": "{{ cpu_request }}", "memory": "{{ memory_request }}"}, "limits": {"memory": "{{ memory_limit }}"}}
+      }]}
+    }
+  }'
+
+/*+ statecheck, retries=20, retry_delay=5 */
+-- desired state is replicas AND image: readyReplicas comes back as text through the
+-- SQL layer, so compare it as a number. A perturbed image fails this check, which
+-- sends the build through the update anchor below.
+SELECT COUNT(*) AS count FROM (
+  SELECT json_extract(metadata, '$.name') AS name,
+         CAST(json_extract(spec, '$.replicas') AS REAL) AS want,
+         CAST(coalesce(json_extract(status, '$.readyReplicas'), 0) AS REAL) AS ready,
+         json_extract(spec, '$.template.spec.containers[0].image') AS image
+  FROM k8s.apps.deployments
+  WHERE namespace = '{{ namespace }}'
+    AND cluster_addr = '{{ cluster_addr }}'
+    AND protocol = '{{ protocol }}'
+) t
+WHERE t.name = '{{ name }}'
+  AND t.want = {{ replicas }}
+  AND t.ready = {{ replicas }}
+  AND t.image = '{{ image }}'
+
+/*+ update */
+-- a strategic merge patch replaces the containers list wholesale, so the whole
+-- container goes in the patch even when only the image changed
+UPDATE k8s.apps.deployments
+SET spec = '{
+    "replicas": {{ replicas }},
+    "template": {
+      "spec": {"containers": [{
+        "name": "{{ name }}",
+        "image": "{{ image }}",
+        "ports": [{"containerPort": {{ container_port }}, "name": "http"}],
+        "resources": {"requests": {"cpu": "{{ cpu_request }}", "memory": "{{ memory_request }}"}, "limits": {"memory": "{{ memory_limit }}"}}
+      }]}
+    }
+  }'
+WHERE name = '{{ name }}'
+  AND namespace = '{{ namespace }}'
+  AND cluster_addr = '{{ cluster_addr }}'
+  AND protocol = '{{ protocol }}'
+
+/*+ delete */
+DELETE FROM k8s.apps.deployments
+WHERE name = '{{ name }}'
+  AND namespace = '{{ namespace }}'
+  AND cluster_addr = '{{ cluster_addr }}'
+  AND protocol = '{{ protocol }}'
