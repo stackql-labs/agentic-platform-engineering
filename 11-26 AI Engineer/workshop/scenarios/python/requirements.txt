@@ -1,0 +1,2 @@
+# Optional API runner only. Offline tests use the Python standard library.
+openai==3.37.0

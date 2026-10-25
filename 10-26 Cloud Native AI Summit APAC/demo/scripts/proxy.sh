@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# kubectl proxy in front of the kind API server. The k8s provider talks to this
-# address (KUBE_CLUSTER_ADDR, default localhost:8001) over plain http; the proxy
-# authenticates with the current kubeconfig context. Leave it running in its own
-# terminal for the whole demo.
+# Optional local-kind bridge for the retained StackQL estate only. The context is
+# explicit; this script never changes the user's current kubeconfig context.
 set -euo pipefail
-ADDR="${KUBE_CLUSTER_ADDR:-localhost:8001}"
+if [[ "${ENABLE_DISPOSABLE_CLUSTER:-}" != "I_UNDERSTAND" ]]; then
+  echo "refusing proxy startup: set ENABLE_DISPOSABLE_CLUSTER=I_UNDERSTAND after reviewing the disposable-cluster instructions"
+  exit 2
+fi
+ADDR="localhost:8001"
+[[ "${KUBE_CLUSTER_ADDR:-$ADDR}" == "$ADDR" ]] || { echo "refusing non-local proxy address"; exit 2; }
 PORT="${ADDR##*:}"
-kubectl config use-context "kind-${KIND_CLUSTER:-platform-demo}" >/dev/null
+CONTEXT="kind-${KIND_CLUSTER:-platform-demo}"
+[[ "$CONTEXT" == "kind-platform-demo" ]] || { echo "refusing unexpected context: $CONTEXT"; exit 2; }
 echo "kubectl proxy on http://$ADDR (ctrl-c to stop)"
-exec kubectl proxy --port="$PORT" --address=127.0.0.1
+exec kubectl --context="$CONTEXT" proxy --port="$PORT" --address=127.0.0.1

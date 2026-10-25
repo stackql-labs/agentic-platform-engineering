@@ -1,3 +1,12 @@
 .stackql/
 .env
 *.log
+**/.env
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/node_modules/
+**/dist/
+**/runs/*
+!**/runs/.gitkeep

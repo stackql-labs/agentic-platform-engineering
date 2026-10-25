@@ -1,0 +1,29 @@
+{
+  "scenario_id": "checkout-image-recovery-v1",
+  "scope": {
+    "namespace": "shop",
+    "name": "checkout",
+    "label": {
+      "key": "purpose",
+      "value": "agentic-demo"
+    }
+  },
+  "observed": {
+    "resource_version": "fixture-rv-17",
+    "image": "registry.example.invalid/workshop/checkout:broken",
+    "desired_replicas": 1,
+    "ready_replicas": 0,
+    "waiting_reason": "ImagePullBackOff",
+    "event": "Synthetic fixture: image tag could not be resolved."
+  },
+  "approved_desired_state": {
+    "image": "registry.example.invalid/workshop/checkout:1.2.3",
+    "desired_replicas": 1
+  },
+  "limits": {
+    "max_tool_calls": 8,
+    "max_turns": 8,
+    "max_output_chars": 4000,
+    "approval_ttl_seconds": 300
+  }
+}

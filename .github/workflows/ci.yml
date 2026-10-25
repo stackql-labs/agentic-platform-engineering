@@ -1,0 +1,39 @@
+name: offline-checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: 10-26 Cloud Native AI Summit APAC/demo/agent/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install TypeScript dependencies
+        working-directory: 10-26 Cloud Native AI Summit APAC/demo/agent
+        run: npm ci
+      - name: Offline smoke, tests, types, and build
+        working-directory: 10-26 Cloud Native AI Summit APAC/demo/agent
+        run: |
+          npm run smoke
+          npm test
+          npm run typecheck
+          npm run build
+      - name: Python fixture tests
+        working-directory: workshop/scenarios/python
+        run: python -m unittest -v
+      - name: Container fixture smoke
+        run: |
+          docker build -f "10-26 Cloud Native AI Summit APAC/demo/agent/Dockerfile" -t platform-agent:fixture .
+          docker run --rm platform-agent:fixture

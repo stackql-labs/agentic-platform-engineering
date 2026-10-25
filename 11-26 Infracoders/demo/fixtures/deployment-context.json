@@ -1,0 +1,11 @@
+{
+  "label": "FIXTURE REPLAY — synthetic; not a live query",
+  "cluster": "infracoders-demo",
+  "namespace": "agent-context-demo",
+  "deployment": "context-demo",
+  "purpose": "infracoders-demo",
+  "resource_version": "fixture-rv-3",
+  "image": "nginx:1.27-alpine",
+  "desired_replicas": 1,
+  "ready_replicas": 1
+}

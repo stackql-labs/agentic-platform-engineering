@@ -1,0 +1,41 @@
+# Local-only declarative demo. Build with run-deploy.ps1 so the exact target and
+# explicit confirmation are checked before stackql-deploy is allowed to write.
+version: 1
+name: infracoders-context-demo
+description: A small, statefile-less StackQL deployment for the Infracoders talk
+providers:
+  - k8s::v26.08.00453
+
+globals:
+  - name: cluster_addr
+    value: "{{ KUBE_CLUSTER_ADDR }}"
+  - name: protocol
+    value: "{{ KUBE_PROTOCOL }}"
+  - name: namespace
+    value: "{{ K8S_NAMESPACE }}"
+  - name: demo_label_key
+    value: purpose
+  - name: demo_label_value
+    value: infracoders-demo
+
+resources:
+  - name: namespace
+    description: Dedicated namespace for this local demo only
+    props:
+      - name: name
+        value: "{{ namespace }}"
+    exports:
+      - namespace
+
+  - name: context_demo
+    description: One labelled deployment used to show provider context and convergence
+    file: resources/deployment.iql
+    props:
+      - name: name
+        value: context-demo
+      - name: image
+        value: nginx:1.27-alpine
+      - name: replicas
+        value: 1
+      - name: container_port
+        value: 80

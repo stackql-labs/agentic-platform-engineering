@@ -1,0 +1,63 @@
+/*+ exists */
+SELECT COUNT(*) AS count FROM k8s.apps.deployments
+WHERE namespace = '{{ namespace }}'
+  AND cluster_addr = '{{ cluster_addr }}'
+  AND protocol = '{{ protocol }}'
+  AND json_extract(metadata, '$.name') = '{{ name }}'
+  AND json_extract(metadata, '$.labels.{{ demo_label_key }}') = '{{ demo_label_value }}'
+
+/*+ create */
+INSERT INTO k8s.apps.deployments(namespace, cluster_addr, protocol, metadata, spec)
+SELECT
+  '{{ namespace }}',
+  '{{ cluster_addr }}',
+  '{{ protocol }}',
+  '{"name": "{{ name }}", "namespace": "{{ namespace }}", "labels": {"app": "{{ name }}", "{{ demo_label_key }}": "{{ demo_label_value }}", "managed-by": "stackql-deploy"}}',
+  '{
+    "replicas": {{ replicas }},
+    "selector": {"matchLabels": {"app": "{{ name }}"}},
+    "template": {
+      "metadata": {"labels": {"app": "{{ name }}", "{{ demo_label_key }}": "{{ demo_label_value }}"}},
+      "spec": {"containers": [{
+        "name": "{{ name }}",
+        "image": "{{ image }}",
+        "ports": [{"containerPort": {{ container_port }}, "name": "http"}]
+      }]}
+    }
+  }'
+
+/*+ statecheck, retries=20, retry_delay=5 */
+SELECT COUNT(*) AS count
+FROM (
+  SELECT json_extract(metadata, '$.name') AS name,
+         json_extract(metadata, '$.labels.{{ demo_label_key }}') AS purpose,
+         CAST(json_extract(spec, '$.replicas') AS REAL) AS desired,
+         CAST(coalesce(json_extract(status, '$.readyReplicas'), 0) AS REAL) AS ready,
+         json_extract(spec, '$.template.spec.containers[0].image') AS image
+  FROM k8s.apps.deployments
+  WHERE namespace = '{{ namespace }}'
+    AND cluster_addr = '{{ cluster_addr }}'
+    AND protocol = '{{ protocol }}'
+) deployment
+WHERE deployment.name = '{{ name }}'
+  AND deployment.purpose = '{{ demo_label_value }}'
+  AND deployment.desired = {{ replicas }}
+  AND deployment.ready = {{ replicas }}
+  AND deployment.image = '{{ image }}'
+
+/*+ update */
+UPDATE k8s.apps.deployments
+SET spec = '{
+    "replicas": {{ replicas }},
+    "template": {
+      "spec": {"containers": [{
+        "name": "{{ name }}",
+        "image": "{{ image }}",
+        "ports": [{"containerPort": {{ container_port }}, "name": "http"}]
+      }]}
+    }
+  }'
+WHERE name = '{{ name }}'
+  AND namespace = '{{ namespace }}'
+  AND cluster_addr = '{{ cluster_addr }}'
+  AND protocol = '{{ protocol }}'
