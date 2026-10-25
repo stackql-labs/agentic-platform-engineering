@@ -1,0 +1,26 @@
+{
+  "finops": {
+    "resource_id": "demo-workload-a",
+    "owner": "team-demo",
+    "utilization_percent": 7.5,
+    "current_replicas": 3,
+    "minimum_replicas": 1,
+    "approved_replicas": 1,
+    "resource_version": "fin-rv-4",
+    "monthly_savings_usd": 42
+  },
+  "cspm": {
+    "resource_id": "demo-storage",
+    "owner": "team-demo",
+    "public_access": true,
+    "approved_public_access": false,
+    "resource_version": "cspm-rv-9"
+  },
+  "access_review": {
+    "role_binding": "demo-rolebinding",
+    "principal": "learner-bot",
+    "grants": ["read", "delete"],
+    "approved_grants": ["read"],
+    "resource_version": "iam-rv-2"
+  }
+}

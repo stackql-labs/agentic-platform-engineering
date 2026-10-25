@@ -1,0 +1,14 @@
+{
+  "name": "infracoders-stackql-context-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline fixture and guard checks for the Infracoders StackQL demo",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "fixture": "node src/fixture-replay.js",
+    "test": "node --test"
+  }
+}

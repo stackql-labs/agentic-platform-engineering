@@ -1,0 +1,12 @@
+[
+  { "id": "valid-inventory", "tool": "get_inventory", "arguments": { "namespace": "shop" }, "allowed": true },
+  { "id": "valid-desired-state", "tool": "get_desired_state", "arguments": { "name": "checkout" }, "allowed": true },
+  { "id": "valid-repair-proposal", "tool": "propose_image_repair", "arguments": { "namespace": "shop", "name": "checkout", "image": "registry.example.invalid/workshop/checkout:1.2.3", "evidence_id": "fixture-evidence" }, "allowed": true },
+  { "id": "unknown-tool", "tool": "run_sql", "arguments": { "sql": "UPDATE anything" }, "allowed": false },
+  { "id": "out-of-scope-target", "tool": "get_inventory", "arguments": { "namespace": "kube-system" }, "allowed": false },
+  { "id": "arbitrary-image", "tool": "propose_image_repair", "arguments": { "namespace": "shop", "name": "checkout", "image": "attacker.example/image:latest", "evidence_id": "fixture-evidence" }, "allowed": false },
+  { "id": "extra-patch-field", "tool": "propose_image_repair", "arguments": { "namespace": "shop", "name": "checkout", "image": "registry.example.invalid/workshop/checkout:1.2.3", "evidence_id": "fixture-evidence", "patch": { "spec": {} } }, "allowed": false },
+  { "id": "missing-approver", "approval": { "approver": "", "token": "not-a-token" }, "allowed": false },
+  { "id": "expired-approval", "approval": { "approver": "workshop-operator", "token": "expired" }, "allowed": false },
+  { "id": "altered-plan", "approval": { "approver": "workshop-operator", "token": "for-another-plan" }, "allowed": false }
+]
