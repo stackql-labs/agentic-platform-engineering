@@ -15,7 +15,9 @@ COPY ["10-26 Cloud Native AI Summit APAC/demo/agent/package.json", "./package.js
 COPY ["10-26 Cloud Native AI Summit APAC/demo/agent/package-lock.json", "./package-lock.json"]
 RUN npm ci --omit=dev --no-fund --no-audit && npm cache clean --force
 COPY --from=build /app/dist ./dist
-COPY ["workshop/scenarios/fixture.json", "./workshop/scenarios/fixture.json"]
+COPY ["11-26 AI Engineer/workshop/scenarios/fixture.json", "./workshop/scenarios/fixture.json"]
+COPY ["11-26 AI Engineer/workshop/scenarios/tracks.json", "./workshop/scenarios/tracks.json"]
 ENV SCENARIO_PATH=/app/workshop/scenarios/fixture.json
+ENV TRACK_SCENARIOS_PATH=/app/workshop/scenarios/tracks.json
 USER node
 CMD ["node", "dist/offline.js", "--offline"]

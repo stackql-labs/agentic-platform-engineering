@@ -44,7 +44,7 @@ npm test
 ### Python
 
 ```powershell
-Set-Location workshop\scenarios\python
+Set-Location '11-26 AI Engineer\workshop\scenarios\python'
 python -m unittest -v
 ```
 

@@ -34,7 +34,8 @@ export interface TrackPlan {
 type TrackData = Omit<TrackScenario, 'applied_plans' | 'correlation_id' | 'audit'>;
 const source = JSON.parse(
   readFileSync(
-    process.env.TRACK_SCENARIOS_PATH ?? new URL('../../../../workshop/scenarios/tracks.json', import.meta.url),
+    process.env.TRACK_SCENARIOS_PATH ??
+      new URL('../../../../11-26 AI Engineer/workshop/scenarios/tracks.json', import.meta.url),
     'utf8',
   ),
 ) as Record<Track, TrackData>;

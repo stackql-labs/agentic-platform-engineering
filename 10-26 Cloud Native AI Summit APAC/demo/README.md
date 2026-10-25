@@ -29,7 +29,7 @@ The smoke path accepts no options other than `--offline` internally and fails on
 ## Offline Python path
 
 ```powershell
-Set-Location workshop\scenarios\python
+Set-Location '11-26 AI Engineer\workshop\scenarios\python'
 python -m unittest -v
 ```
 
@@ -49,7 +49,7 @@ npm run agent -- --live-model
 Python:
 
 ```powershell
-Set-Location workshop\scenarios\python
+Set-Location '11-26 AI Engineer\workshop\scenarios\python'
 python -m pip install -r requirements.txt
 $env:OPENAI_API_KEY = '<approved API key>'
 python openai_agent.py --live-model

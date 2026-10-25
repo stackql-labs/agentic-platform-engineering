@@ -16,7 +16,7 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cases = JSON.parse(
-  readFileSync(path.resolve(here, '../../../../workshop/scenarios/policy-cases.json'), 'utf8'),
+  readFileSync(path.resolve(here, '../../../../11-26 AI Engineer/workshop/scenarios/policy-cases.json'), 'utf8'),
 ) as Array<{
   id: string;
   tool?: string;

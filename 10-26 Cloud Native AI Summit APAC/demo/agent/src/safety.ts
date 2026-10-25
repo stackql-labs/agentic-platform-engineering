@@ -61,7 +61,8 @@ interface FixtureFile {
 
 const scenario = JSON.parse(
   readFileSync(
-    process.env.SCENARIO_PATH ?? new URL('../../../../workshop/scenarios/fixture.json', import.meta.url),
+    process.env.SCENARIO_PATH ??
+      new URL('../../../../11-26 AI Engineer/workshop/scenarios/fixture.json', import.meta.url),
     'utf8',
   ),
 ) as FixtureFile;

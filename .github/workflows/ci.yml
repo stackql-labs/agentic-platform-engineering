@@ -31,7 +31,7 @@ jobs:
           npm run typecheck
           npm run build
       - name: Python fixture tests
-        working-directory: workshop/scenarios/python
+        working-directory: 11-26 AI Engineer/workshop/scenarios/python
         run: python -m unittest -v
       - name: Container fixture smoke
         run: |
