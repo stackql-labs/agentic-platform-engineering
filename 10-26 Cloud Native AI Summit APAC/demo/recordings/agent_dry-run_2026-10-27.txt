@@ -1,0 +1,95 @@
+platform-agent  model=claude-sonnet-5-5 effort=medium mode=read_only tools=15
+namespace=shop cluster_addr=localhost:8001 audit=runs/
+
+declared intent (stack/stackql_manifest.yml):
+  | deployment | image | replicas | upstream project (GitHub owner/repo) |
+  | --- | --- | --- | --- |
+  | web | nginx:1.27-alpine | 2 | nginx/nginx |
+  | checkout | hashicorp/http-echo:1.0 | 1 | hashicorp/http-echo |
+
+[01   5.8s] run_select_query
+      SELECT json_extract(metadata,'$.name') n, json_extract(metadata,'$.labels.purpose') p, json_extract(spec,'$.replicas') r, json_extract(spec,'$.template.spec.containers[0].name') c, json_extract(spec,'$.template.spec.containers[0].image') img, json_extract(status,'$.readyReplicas') rdy, json_extract(status,'$.availableR ...
+      -> {"rows":[{"av":"1","c":"checkout","img":"hashicorp/http-echo:1.0.1-hotfix","n":"checkout","p":"agentic-demo","r":"1","rdy":"1"},{"av":"4","c":"web","img":"nginx:1.27-alpine","n":"web","p":"agentic-dem ...
+[01   5.8s] run_select_query
+      SELECT json_extract(metadata,'$.name') n, json_extract(metadata,'$.labels.app') app, json_extract(status,'$.phase') ph, json_extract(status,'$.containerStatuses[0].state.waiting.reason') w, json_extract(status,'$.containerStatuses[0].restartCount') rc, json_extract(spec,'$.containers[0].image') img FROM k8s.core.pods W ...
+      -> {"rows":[{"app":"checkout","img":"hashicorp/http-echo:1.0","n":"checkout-744dd64d88-jg2qt","ph":"Running","rc":"0","w":"null"},{"app":"checkout","img":"hashicorp/http-echo:1.0.1-hotfix","n":"checkout- ...
+[01   5.8s] run_select_query
+      SELECT json_extract(involved_object,'$.name') o, reason, message, count, last_timestamp FROM k8s.core.events WHERE namespace='shop' AND cluster_addr='localhost:8001' AND protocol='http' AND type='Warning'
+      -> {"rows":[{"count":"5","last_timestamp":"2026-10-26T23:18:31Z","message":"Failed to pull image \"hashicorp/http-echo:1.0.1-hotfix\": rpc error: code = NotFound desc = failed to pull and unpack image \" ...
+[02   2.9s] run_select_query
+      SELECT tag_name, name FROM github.repos.releases WHERE owner='hashicorp' AND repo='http-echo'
+      -> {"rows":[{"name":"v1.0.0","tag_name":"v1.0.0"},{"name":"","tag_name":"v0.2.3"},{"name":"","tag_name":"v0.2.2"},{"name":"","tag_name":"v0.2.1"},{"name":"","tag_name":"v0.2.0"},{"name":"","tag_name":"v0 ...
+[02   2.9s] list_methods
+      {"provider":"k8s","service":"apps","resource":"deployments"}
+      -> | MethodName | RequiredParams | SQLVerb | |---|---|---| | get | name, namespace, cluster_addr | SELECT | | list | namespace, cluster_addr | SELECT | | create | namespace, cluster_addr | INSERT | | del ...
+[03   2.2s] describe_method
+      {"provider":"k8s","service":"apps","resource":"deployments","method":"patch","row_limit":20}
+      -> # Method ## Record 1 description: name: cluster_addr param_type: input_required shape: type: string ## Record 2 description: name: name param_type: input_required shape: type: string ## Record 3 descr ...
+[04  18.5s] run_mutation_query
+      UPDATE k8s.apps.deployments SET spec = '{"template":{"spec":{"containers":[{"name":"checkout","image":"hashicorp/http-echo:1.0"}]}}}' WHERE name = 'checkout' AND namespace = 'shop' AND cluster_addr = 'localhost:8001' AND protocol = 'http'
+      -> REFUSED/DECLINED: tool "run_mutation_query" refused: server is in 'read_only' mode
+
+--- report -------------------------------------------------------------------
+# Drift review: `shop` namespace
+
+## Status
+
+| deployment | declared | observed | verdict | action |
+| --- | --- | --- | --- | --- |
+| web | `nginx:1.27-alpine`, 2 replicas | `nginx:1.27-alpine`, 4 desired, 4 ready, 4 available | drifted, healthy | **escalate**: scaled up out of band, but fully ready and serving, so I won't override it. |
+| checkout | `hashicorp/http-echo:1.0`, 1 replica | spec image `hashicorp/http-echo:1.0.1-hotfix`, 1 desired, 1 ready, 1 available | drifted, unhealthy | **remediate**: the bad image can't be pulled. The fix was refused (`read_only`), so it needs a human or a mode change. |
+
+Both deployments carry the label `purpose=agentic-demo`.
+
+## Evidence
+
+**web**
+- All 4 pods are Running with 0 restarts and no waiting reason.
+- There are no Warning events for web.
+- The only drift is the replica count (4 observed, 2 declared).
+- Likely reason: someone scaled it by hand, perhaps for load or a traffic event. I did not observe the cause.
+- Two ways to resolve it:
+  1. Change the declaration to 4 replicas if the scale-up is intended.
+  2. Converge back to 2 by patching `spec.replicas` to 2.
+
+**checkout**
+- It has two pods:
+  - `checkout-744dd64d88-jg2qt` is Running on the declared `hashicorp/http-echo:1.0`. This is the old ReplicaSet, which is why the deployment still shows 1 ready.
+  - `checkout-79fcd6d47d-gdx77` is Pending on `1.0.1-hotfix` and waiting with `ErrImagePull`. It has 0 restarts.
+- Warning events on the Pending pod:
+  - "Failed to pull image `hashicorp/http-echo:1.0.1-hotfix` … `docker.io/hashicorp/http-echo:1.0.1-hotfix: not found`" (5 times).
+  - `Error: ErrImagePull` (5 times).
+  - `Error: ImagePullBackOff` (12 times, last seen 23:18:46Z).
+- Upstream check, `github.repos.releases` for `hashicorp/http-echo`: the releases are `v1.0.0`, `v0.2.3`, `v0.2.2`, `v0.2.1`, `v0.2.0` and `v0.1.3`.
+  - No release matches `1.0.1-hotfix`, so the tag appears to be one that was never published.
+  - The declared `1.0` isn't a literal release tag either; the closest is `v1.0.0`. The old pod is running `:1.0` successfully, so that image tag does resolve.
+- The rollout is stuck. The old pod is still serving, so there is no outage yet, but the deployment is not converged.
+
+## Statement
+
+I discovered the write contract first. `list_methods` shows `patch` as the `UPDATE` verb, requiring `name`, `namespace` and `cluster_addr`. `describe_method` shows `spec` as an optional input, so this is a strategic merge patch. I named the `checkout` container so the containers list is patched correctly.
+
+```sql
+UPDATE k8s.apps.deployments
+SET spec = '{"template":{"spec":{"containers":[{"name":"checkout","image":"hashicorp/http-echo:1.0"}]}}}'
+WHERE name = 'checkout' AND namespace = 'shop'
+  AND cluster_addr = 'localhost:8001' AND protocol = 'http';
+```
+
+**Result: refused by the server.** The error was `server is in 'read_only' mode`. I attempted it once, did not retry or rephrase, and nothing was changed. To apply it, the platform team must switch the server out of `read_only` mode or run the statement themselves. In `safe` mode it would pause for operator approval.
+
+## Statements run
+1. SELECT `k8s.apps.deployments` in `shop`: name, label, replicas, container image, ready and available counts.
+2. SELECT `k8s.core.pods` in `shop`: phase, waiting reason, restart count, image.
+3. SELECT `k8s.core.events` in `shop` with `type='Warning'`.
+4. SELECT `github.repos.releases` with `owner='hashicorp'` and `repo='http-echo'`.
+5. `list_methods` and `describe_method` (patch) on `k8s.apps.deployments`.
+6. The `UPDATE` above, via `run_mutation_query`: refused.
+--- run ----------------------------------------------------------------------
+model: claude-sonnet-5-5 (effort medium)   mode: read_only   finish: stop
+steps: 5   tool calls: run_select_query=4 list_methods=1 describe_method=1 run_mutation_query=1
+writes attempted: 1   (the server decided what happened to them)
+tokens: in=592970 out=3021 total=595991   list price: USD 1.2162
+audit log: C:\LocalGitRepos\stackql\demo-repos\agentic-platform-engineering\10-26 Cloud Native AI Summit APAC\demo\runs\stackql_mcp_server_20261026T231841Z.log
+transcript: C:\LocalGitRepos\stackql\demo-repos\agentic-platform-engineering\10-26 Cloud Native AI Summit APAC\demo\runs\agent_2026-10-26T23-18-41-713Z.txt
+elapsed: 45.4s

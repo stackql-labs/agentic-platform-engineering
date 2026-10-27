@@ -1,8 +1,10 @@
 -- The human view of the same estate the agent reads. Paste into `stackql shell`
 -- started with the same approot:  stackql shell --approot "$STACKQL_APPROOT"
 -- Replace shop / localhost:8001 if you changed the .env values.
+--
+-- Declared (stack/stackql_manifest.yml): web nginx:1.27-alpine x2, checkout hashicorp/http-echo:1.0 x1
 
--- the deployments: desired vs ready, and the image each one runs
+-- what is: the deployments, desired vs ready, and the image each one runs
 SELECT json_extract(metadata, '$.name') AS deployment,
        json_extract(spec, '$.replicas') AS want,
        coalesce(json_extract(status, '$.readyReplicas'), 0) AS ready,
@@ -24,11 +26,11 @@ WHERE namespace = 'shop'
   AND cluster_addr = 'localhost:8001'
   AND protocol = 'http';
 
--- the Warning events: what the cluster itself says went wrong
+-- what was: the Warning events, what the cluster itself says went wrong
 SELECT reason,
-       json_extract(involvedObject, '$.name') AS object,
+       json_extract(involved_object, '$.name') AS object,
        count,
-       lastTimestamp,
+       last_timestamp,
        message
 FROM k8s.core.events
 WHERE namespace = 'shop'
@@ -36,3 +38,11 @@ WHERE namespace = 'shop'
   AND protocol = 'http'
   AND type = 'Warning'
 ORDER BY count DESC;
+
+-- the same query shape, a different provider: does the hotfix tag exist upstream?
+SELECT tag_name, published_at
+FROM github.repos.releases
+WHERE owner = 'hashicorp'
+  AND repo = 'http-echo'
+ORDER BY published_at DESC
+LIMIT 5;

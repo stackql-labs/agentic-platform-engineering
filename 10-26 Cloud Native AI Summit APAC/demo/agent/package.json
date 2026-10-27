@@ -1,9 +1,9 @@
 {
   "name": "platform-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Safe offline-first agent teaching path with OpenAI Responses API",
+  "description": "An always-on platform agent: Vercel AI SDK + Claude + the StackQL MCP server (plus the offline fixture runner used by the workshop)",
   "engines": {
     "node": ">=24.19.0"
   },
@@ -11,14 +11,23 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "agent": "tsx src/agent.ts",
+    "tools": "tsx src/agent.ts --list-tools",
+    "probe": "tsx src/agent.ts --probe-write",
+    "replay": "tsx src/agent.ts --replay",
+    "audit": "tsx src/audit.ts",
+    "fixture": "tsx src/fixture-agent.ts",
     "vercel": "tsx src/vercel-agent.ts",
     "smoke": "tsx src/offline.ts --offline",
     "test": "tsx --test test/safety.test.ts test/args.test.ts test/tracks.test.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "4.0.89",
+    "@ai-sdk/mcp": "2.0.85",
     "@ai-sdk/openai": "4.0.102",
-    "ai": "7.0.153",
+    "@stackql/mcp-server": "0.12.824",
+    "ai": "7.0.154",
     "openai": "7.43.0",
+    "yaml": "2.9.1",
     "zod": "4.1.8"
   },
   "devDependencies": {

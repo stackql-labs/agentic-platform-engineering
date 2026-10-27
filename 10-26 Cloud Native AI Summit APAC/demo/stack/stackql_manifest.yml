@@ -5,9 +5,13 @@
 # service and a ClusterIP service, on a local kind cluster reached through
 # `kubectl proxy`. No state file: every build asserts each resource against the
 # live API (exists -> create | statecheck -> update), so a re-run converges
-# whatever a human or an agent changed in between. That is the demo beat:
-# scripts/perturb.sh points the checkout image at a tag that does not exist,
-# the agent finds it, and `stackql-deploy build` puts it back.
+# whatever a human or an agent changed in between.
+#
+# This file is also the "what should be" of the demo: the agent reads the
+# declared image and replica count of each deployment from here (the `upstream`
+# prop names the GitHub project behind the image, for the cross-provider check)
+# and compares them with what the cluster reports. scripts/drift.sh makes the
+# 3am changes; `stackql-deploy build` puts the estate back.
 #
 # Build:    stackql-deploy build stack demo --env-file .env --show-queries
 # Dry run:  stackql-deploy build stack demo --env-file .env --dry-run
@@ -59,6 +63,9 @@ resources:
         value: frontend
       - name: image
         value: "nginx:1.27-alpine"
+      - name: upstream
+        description: the GitHub project behind the image (owner/repo), for the agent's upstream check
+        value: nginx/nginx
       - name: container_port
         value: 80
       - name: replicas
@@ -86,9 +93,9 @@ resources:
 
   - name: checkout_deployment
     description: |
-      the checkout service, one replica. The image is the value scripts/perturb.sh
-      changes; the statecheck below compares it, so a build after the perturb
-      runs the update anchor and converges the image back.
+      the checkout service, one replica. The image is the value scripts/drift.sh
+      changes; the statecheck below compares it, so a build after the drift runs
+      the update anchor and converges the image back.
     file: deployment.iql
     props:
       - name: name
@@ -97,6 +104,9 @@ resources:
         value: backend
       - name: image
         value: "hashicorp/http-echo:1.0"
+      - name: upstream
+        description: the GitHub project behind the image (owner/repo), for the agent's upstream check
+        value: hashicorp/http-echo
       - name: container_port
         value: 5678
       - name: replicas

@@ -1,36 +1,35 @@
 #!/usr/bin/env bash
-# Explicit setup for the original local-kind/StackQL estate and local dependencies.
-# It is not required for offline smoke or the fixture agent.
+# One-time setup: tools, the disposable kind cluster, agent dependencies.
+# Safe to re-run; it creates nothing that already exists.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+. "$(dirname "$0")/_env.sh"
 
-if [[ "${ENABLE_DISPOSABLE_CLUSTER:-}" != "I_UNDERSTAND" ]]; then
-  echo "refusing cluster setup: set ENABLE_DISPOSABLE_CLUSTER=I_UNDERSTAND after reviewing the disposable-cluster instructions"
-  exit 2
-fi
-KIND_CLUSTER="${KIND_CLUSTER:-platform-demo}"
-if [[ "$KIND_CLUSTER" != "platform-demo" ]]; then
-  echo "refusing unexpected cluster name: $KIND_CLUSTER"
-  exit 2
-fi
-for t in stackql stackql-deploy kind kubectl node npm; do
-  command -v "$t" >/dev/null 2>&1 || { echo "missing: $t"; exit 1; }
+for t in stackql kind kubectl node npm curl; do
+  command -v "$t" >/dev/null 2>&1 || { echo "missing on PATH: $t" >&2; exit 1; }
 done
-
-if ! kind get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER"; then
-  echo "creating kind cluster $KIND_CLUSTER"
-  kind create cluster --name "$KIND_CLUSTER"
-else
-  echo "kind cluster $KIND_CLUSTER exists"
+if ! command -v "$STACKQL_DEPLOY" >/dev/null 2>&1 && [ ! -x "$STACKQL_DEPLOY" ]; then
+  echo "stackql-deploy not found (STACKQL_DEPLOY=$STACKQL_DEPLOY): pip install stackql-deploy, or set STACKQL_DEPLOY in .env to the exe" >&2
+  exit 1
 fi
-echo "the stack manifest pins k8s::v26.08.00453; stackql-deploy resolves it during the first build"
+[ -f .env ] || { echo "no .env: copy .env.example to .env and fill in ANTHROPIC_API_KEY" >&2; exit 1; }
+
+if kind get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER"; then
+  echo "kind cluster $KIND_CLUSTER exists"
+else
+  echo "creating kind cluster $KIND_CLUSTER (pulls the node image on first run)"
+  # KIND_NODE_IMAGE pins the node image; a Docker Desktop on cgroup v1 cannot bootstrap
+  # kind's newest default image, and kindest/node:v1.33.1 is known to work there
+  kind create cluster --name "$KIND_CLUSTER" --wait 180s ${KIND_NODE_IMAGE:+--image "$KIND_NODE_IMAGE"}
+fi
+"${KUBECTL[@]}" get nodes
 
 echo "installing agent dependencies"
-(cd agent && npm ci --no-fund --no-audit >/dev/null)
+(cd agent && npm install --no-fund --no-audit >/dev/null)
 
-mkdir -p runs
+mkdir -p runs recordings
 echo
 echo "next:"
-echo "  scripts/proxy.sh                                   # second terminal, leave it running"
-echo "  stackql-deploy build stack demo --env-file .env --show-queries"
-echo "  cd agent && npm run smoke                           # fixture-only; no model or cluster"
+echo "  scripts/proxy.sh        # second terminal, leave it running"
+echo "  scripts/build.sh        # the estate, asserted from stack/stackql_manifest.yml"
+echo "  scripts/drift.sh        # the 3am changes"
+echo "  cd agent && npm run agent"
