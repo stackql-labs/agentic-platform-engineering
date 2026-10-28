@@ -82,7 +82,7 @@ SELECT json_extract(rules, '$[0].description') AS description,
        json_extract(rules, '$[0].enabled') AS enabled,
        last_updated
 FROM cloudflare.rulesets.phases
-WHERE zone_id = '<zone id>' AND ruleset_phase = 'http_ratelimit';
+WHERE zone_id = '30850494d46bca19a6b11b842bdac9ff' AND ruleset_phase = 'http_ratelimit';
 ```
 
 Threshold 5 against a declared 100, and a description that says someone meant to put it back. The `last_updated` is the 3am. (The shell wraps the description over two lines; the numbers are on the first.)
@@ -111,7 +111,7 @@ SELECT r.last_updated AS rule_changed,
        c.committed    AS declaration_changed,
        r.last_updated > c.committed AS out_of_band
 FROM (SELECT last_updated FROM cloudflare.rulesets.phases
-      WHERE zone_id = '<zone id>' AND ruleset_phase = 'http_ratelimit') r
+      WHERE zone_id = '30850494d46bca19a6b11b842bdac9ff' AND ruleset_phase = 'http_ratelimit') r
 CROSS JOIN
      (SELECT max(json_extract(commit, '$.author.date')) AS committed FROM github.repos.commits
       WHERE owner = 'stackql-labs' AND repo = 'agentic-platform-engineering'
@@ -121,14 +121,14 @@ CROSS JOIN
 `out_of_band = 1`: that is the diagnosis, in one query, across two providers. (`null` in both right-hand columns if the commits query returned nothing.)
 
 ```sql
--- Who is being blocked: requests by edge status in the last hour
+-- Who is being blocked: requests by edge status today (29 October, AEDT)
 SELECT edge_response_status AS status, sum(requests) AS requests
 FROM cloudflare.zones.http_requests_adaptive_groups
-WHERE zone_tag = '<zone id>' AND since = '<1h ago>' AND until = '<now>'
+WHERE zone_tag = '30850494d46bca19a6b11b842bdac9ff' AND since = '2026-10-28T13:00:00Z' AND until = '2026-10-29T13:00:00Z'
 GROUP BY edge_response_status ORDER BY requests DESC;
 ```
 
-429s, if `scripts/traffic.sh` ran in the hour: a burst of 30 from one address is five passes and the rest 429s, and the data set is sampled, so the count is approximate. Without it, zero rows is a valid answer; the agent says so rather than inventing a count.
+429s, if `scripts/traffic.sh` ran today: a burst of 30 from one address is five passes and the rest 429s, and the data set is sampled, so the count is approximate. Without it, zero rows is a valid answer; the agent says so rather than inventing a count.
 
 ## Run
 
