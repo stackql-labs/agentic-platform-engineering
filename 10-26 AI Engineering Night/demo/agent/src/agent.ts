@@ -32,7 +32,7 @@ import { Experimental_StdioMCPTransport as StdioMCPTransport } from '@ai-sdk/mcp
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateText, isStepCount, type Tool, type ToolExecutionOptions, type ToolSet } from 'ai';
 
-import { bold, box, cyan, dim, green, magenta, markdown, red, rule, strip, table, wrap, yellow } from './console.js';
+import { bold, box, cyan, dim, green, magenta, markdown, red, rule, strip, table, width, wrap, yellow, type Paint } from './console.js';
 import { assertion, readManifest, type Declaration } from './declaration.js';
 import { check, type Declared } from './policy.js';
 
@@ -102,6 +102,9 @@ const oneLine = (s: string, max: number) => {
 };
 const runStamp = new Date().toISOString().replace(/[:.]/g, '-');
 const paintMode = (m: string) => (m === 'safe' ? yellow(m) : green(m));
+/** the frames: the terminal's width, at most 120 columns; `fit` wraps text to go inside one */
+const W = width();
+const fit = (s: string, paint: Paint = (x) => x) => wrap(s, W - 4).map(paint);
 
 function render(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
@@ -171,11 +174,11 @@ type JsonSchema = { properties?: Record<string, { type?: string; enum?: unknown[
 
 async function elicit(message: string, requestedSchema: unknown): Promise<ElicitResult> {
   log();
-  const body = ['the server is in safe mode and a write is waiting', '', ...message.split('\n').flatMap((l) => (l.length <= 88 ? [l] : wrap(l, 88)))];
-  for (const l of box(body, 'APPROVAL REQUIRED', yellow)) log(`  ${l}`);
+  const body = ['the server is in safe mode and a write is waiting', '', ...message.split('\n')];
+  for (const l of box(body, { title: 'APPROVAL REQUIRED', edge: yellow, width: W })) log(l);
 
   if (!process.stdin.isTTY) {
-    log(red('  no operator attached (not a TTY): declined')); // a scheduled run has nobody to ask
+    log(red('no operator attached (not a TTY): declined')); // a scheduled run has nobody to ask
     return { action: 'decline' };
   }
 
@@ -184,20 +187,20 @@ async function elicit(message: string, requestedSchema: unknown): Promise<Elicit
     const props = ((requestedSchema ?? {}) as JsonSchema).properties ?? {};
     const content: Record<string, unknown> = {};
     if (Object.keys(props).length === 0) {
-      const a = (await rl.question(bold('  approve? [y/N] '))).trim().toLowerCase();
+      const a = (await rl.question(bold('approve? [y/N] '))).trim().toLowerCase();
       return a === 'y' || a === 'yes' ? { action: 'accept', content: {} } : { action: 'decline' };
     }
     for (const [key, def] of Object.entries(props)) {
       const label = def.description ?? def.title ?? key;
       if (def.type === 'boolean') {
-        const a = (await rl.question(bold(`  ${label} [y/N] `))).trim().toLowerCase();
+        const a = (await rl.question(bold(`${label} [y/N] `))).trim().toLowerCase();
         content[key] = a === 'y' || a === 'yes';
       } else if (Array.isArray(def.enum)) {
-        const a = (await rl.question(`  ${label} (${def.enum.join(' | ')}) `)).trim();
+        const a = (await rl.question(`${label} (${def.enum.join(' | ')}) `)).trim();
         if (!def.enum.map(String).includes(a)) return { action: 'decline' };
         content[key] = a;
       } else {
-        const a = (await rl.question(`  ${label}: `)).trim();
+        const a = (await rl.question(`${label}: `)).trim();
         if (a === '') return { action: 'decline' };
         content[key] = def.type === 'number' || def.type === 'integer' ? Number(a) : a;
       }
@@ -291,10 +294,13 @@ function gated(tools: ToolSet, declared: Declared, record = true): ToolSet {
 
 async function listTools(client: MCPClient): Promise<void> {
   const tools = await client.tools();
-  log(`${bold('server')}   ${client.serverInfo.name} ${client.serverInfo.version ?? ''}`);
-  log(`${bold('mode')}     ${paintMode(cfg.mode)}`);
-  log(`${bold('zone')}     ${cfg.zoneName} ${dim(`(${cfg.zoneId})`)}`);
-  log(`${bold('tools')}    ${Object.keys(tools).length}`);
+  const head = [
+    `${bold('server')}  ${client.serverInfo.name} ${client.serverInfo.version ?? ''}`,
+    `${bold('mode')}    ${paintMode(cfg.mode)}`,
+    `${bold('zone')}    ${cfg.zoneName} ${dim(`(${cfg.zoneId})`)}`,
+    `${bold('tools')}   ${Object.keys(tools).length}`,
+  ];
+  for (const l of box(head, { title: 'tool surface', width: W })) log(l);
   for (const name of Object.keys(tools).sort()) log(WRITE_TOOLS.has(name) ? `  ${magenta('[write]')} ${magenta(name)}` : `          ${name}`);
 }
 
@@ -304,15 +310,22 @@ async function probeWrite(client: MCPClient, file?: string): Promise<void> {
   const declared = declaration();
   const source = file ?? (existsSync(proposalFile()) ? proposalFile() : undefined);
   const sql = source ? readFileSync(source, 'utf8').replace(/\{\{\s*zone_id\s*\}\}/g, cfg.zoneId).replace(/^\s*--.*$/gm, '').trim() : declared.sql;
-  log(`${bold('mode')}    ${paintMode(cfg.mode)}`);
-  log(`${bold('source')}  ${source ? path.relative(demoRoot, source) : 'the declared assertion'}`);
-  log(`${bold('write')}   ${oneLine(sql, 400)}`);
+  const [first = '', ...more] = wrap(oneLine(sql, 400), W - 12);
+  const head = [
+    `${bold('mode')}    ${paintMode(cfg.mode)}`,
+    `${bold('source')}  ${source ? path.relative(demoRoot, source) : 'the declared assertion'}`,
+    `${bold('write')}   ${first}`,
+    ...more.map((l) => `        ${l}`),
+  ];
+  for (const l of box(head, { title: 'probe', width: W })) log(l);
   log();
   const tools = gated(await client.tools(), declared, false); // a probe is not a proposal
+  const started = Date.now();
   const result = await (tools['run_mutation_query'] as Tool).execute!({ sql }, { toolCallId: 'probe', messages: [], context: undefined });
   const text = resultText(result);
-  const paint = /declined|refused|denied|error/i.test(text) ? red : green;
-  for (const l of markdown(text)) log(paint(l));
+  const blocked = /declined|refused|denied|error/i.test(text);
+  const paint = blocked ? red : green;
+  for (const l of box(markdown(text, W - 4).map(paint), { title: blocked ? 'BLOCKED' : 'APPLIED', note: elapsed(started), edge: paint, width: W })) log(l);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -348,11 +361,11 @@ async function run(client: MCPClient): Promise<void> {
     `${bold('model')} ${cfg.model}   ${bold('mode')} ${paintMode(cfg.mode)}   ${bold('tools')} ${Object.keys(tools).length}   ${bold('zone')} ${vars.zone_name}`,
     dim(`audit ${path.relative(demoRoot, auditFile)}`),
   ];
-  for (const l of box(head, 'edge-agent')) log(l);
+  for (const l of box(head, { title: 'edge-agent', width: W })) log(l);
   log();
   log(`${bold('declared')}  ${dim('stack/stackql_manifest.yml')}`);
-  for (const l of declaredTable(declared)) log(`  ${l}`);
-  log('permitted write: one REPLACE that asserts the declared rule (policy.ts); the server mode decides if it runs');
+  for (const l of declaredTable(declared)) log(l);
+  log(dim('permitted write: one REPLACE that asserts the declared rule (policy.ts); the server mode decides if it runs'));
   log();
 
   const toolCounts = new Map<string, number>();
@@ -373,19 +386,26 @@ async function run(client: MCPClient): Promise<void> {
         const input = (call.input ?? {}) as Record<string, unknown>;
         const shown = typeof input.sql === 'string' ? input.sql : JSON.stringify(input);
         const write = WRITE_TOOLS.has(call.toolName);
-        log(`${dim('[')}${bold(String(stepNumber + 1).padStart(2, '0'))} ${dim(elapsed(stepStarted).padStart(6))}${dim(']')} ${write ? magenta(call.toolName) : cyan(call.toolName)}`);
-        log(`      ${oneLine(shown, 320)}`);
         const text = resultText(outputs.get(call.toolCallId));
         const blocked = write && /refused|declined/i.test(text);
-        log(`      ${dim('->')} ${blocked ? `${red(bold('BLOCKED'))}${red(`: ${oneLine(text, 200)}`)}` : dim(oneLine(text, 200))}`);
+        const outcome = blocked
+          ? fit(`BLOCKED: ${oneLine(text, 200)}`, red).map((l, n) => (n === 0 ? l.replace('BLOCKED', bold('BLOCKED')) : l))
+          : fit(`-> ${oneLine(text, 200)}`, dim);
+        const frame = {
+          title: `${String(stepNumber + 1).padStart(2, '0')}  ${call.toolName}`,
+          note: elapsed(stepStarted),
+          edge: blocked ? red : write ? magenta : cyan,
+          width: W,
+        };
+        for (const l of box([...fit(oneLine(shown, 320)), ...outcome], frame)) log(l);
+        log();
       }
       stepStarted = Date.now();
     },
   });
 
-  log();
-  log(rule('report'));
-  for (const l of markdown(result.text.trim())) log(l);
+  log(rule('report', W));
+  for (const l of markdown(result.text.trim(), W)) log(l);
   log();
   const usage = result.totalUsage;
   const calls = [...toolCounts.entries()].sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n}=${c}`).join(' ');
@@ -399,7 +419,8 @@ async function run(client: MCPClient): Promise<void> {
     `${bold('audit')} ${rel(latestAuditLog())}`,
     `${bold('transcript')} ${rel(transcriptFile)}`,
   ];
-  for (const l of box(summary, 'run')) log(l);
+  const done = result.finishReason === 'stop';
+  for (const l of box(summary, { title: done ? 'run complete' : `run ended: ${result.finishReason}`, edge: done ? green : yellow, width: W })) log(l);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -411,10 +432,10 @@ async function replay(file?: string): Promise<void> {
   if (!target || !existsSync(target)) throw new Error(`no transcript to replay (looked in ${cfg.auditDir} and ${cfg.recordingsDir})`);
   const recorded = statSync(target).mtime.toISOString().slice(0, 16).replace('T', ' ');
   const banner = [`${path.relative(demoRoot, target)}   ${dim(`recorded ${recorded} UTC`)}`, bold('not a live run')];
-  for (const l of box(banner, 'REPLAY', yellow)) console.log(l);
+  for (const l of box(banner, { title: 'REPLAY', edge: yellow, width: W })) console.log(l);
   console.log();
   for (const line of readFileSync(target, 'utf8').split('\n')) {
-    if (/^\[\d\d /.test(strip(line))) await sleep(900);
+    if (/^(\[\d\d |\u250c\u2500 \d\d  )/.test(strip(line))) await sleep(900); // a step: a frame's top edge (or the older line form)
     console.log(line);
     await sleep(40);
   }

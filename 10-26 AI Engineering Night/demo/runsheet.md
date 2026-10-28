@@ -1,10 +1,21 @@
 # Runsheet
 
-Terminal 1 is Git Bash (the scripts), Terminal 2 is PowerShell (the agent). No cluster, no proxy: the estate is one Cloudflare zone.
+Runsheet for the `edge-agent` demo.
+
+## Overview
+
+A scheduled platform agent...
+
+- checks the live rate limit rule on a Cloudflare zone through the StackQL MCP server
+- reasons over it against the rule declared in the stack manifest, the declaration's commit history on GitHub and the last hour of edge traffic; and - proposes at most one write: the assertion of the declared rule. 
+
+Whether that write runs is decided by three gates the platform owns and the model cannot change: a policy in code, the server's mode, and a human at the terminal.
 
 ## Prerequisites
 
-Before the day: push this folder to origin. The commits query and `out_of_band` read the manifest's history from GitHub and return nothing until it is there. Drift the zone after the push, so the rule's `last_updated` is newer than the newest commit.
+Terminal 1 is Git Bash (the scripts), Terminal 2 is PowerShell (the agent). No cluster, no proxy: the estate is one Cloudflare zone.
+
+The commits query and `out_of_band` read the manifest's history from origin `main` (the folder was merged there on 29 October). Drift the zone after any change to the manifest lands, so the rule's `last_updated` is newer than the newest commit.
 
 **Terminal 1 (Git Bash):**
 
@@ -19,13 +30,19 @@ stackql shell             # from this directory: its .stackql holds the cloudfla
 ```powershell
 cd "C:\LocalGitRepos\stackql\demo-repos\agentic-platform-engineering\10-26 AI Engineering Night\demo\agent"
 npm run tools
-# about a second: mode read_only, 15 tools, four marked [write]
+# about a second: the tool surface frame (mode read_only, 15 tools), four tools marked [write]
 ```
 
 The zone should already be drifted (threshold 5, description `TEMP bot scare 03:12 - put back later`). If it is not, in a Git Bash window:
 
 ```bash
 scripts/restore.sh && scripts/drift.sh
+```
+
+A few minutes before the agent beat, from Terminal 1, so the hour of traffic has 429s in it:
+
+```bash
+scripts/traffic.sh            # 30 requests at the zone: five pass, the rest get 429
 ```
 
 ## StackQL Background
@@ -72,7 +89,7 @@ WHERE owner = 'stackql-labs' AND repo = 'agentic-platform-engineering'
 ORDER BY committed DESC LIMIT 3;
 ```
 
-The declaration last changed before the rule did. Nobody changed the intent; someone changed the zone. (Zero rows means the folder is not on origin yet; the agent says "not observed" and carries on.)
+The declaration last changed before the rule did. Nobody changed the intent; someone changed the zone. (Zero rows means `DECLARATION_PATH` does not match the path on origin `main`; the agent says "not observed" and carries on.)
 
 One question across the two (`CROSS JOIN`; the comma form of the join does not plan):
 
@@ -89,7 +106,7 @@ CROSS JOIN
         AND path = '10-26 AI Engineering Night/demo/stack/stackql_manifest.yml') c;
 ```
 
-`out_of_band = 1`: that is the diagnosis, in one query, across two providers. (`null` in both right-hand columns until the folder is pushed.)
+`out_of_band = 1`: that is the diagnosis, in one query, across two providers. (`null` in both right-hand columns if the commits query returned nothing.)
 
 ```sql
 -- Who is being blocked: requests by edge status in the last hour
@@ -99,9 +116,9 @@ WHERE zone_tag = '<zone id>' AND since = '<1h ago>' AND until = '<now>'
 GROUP BY edge_response_status ORDER BY requests DESC;
 ```
 
-429s, if there has been traffic. Zero rows is a valid answer; say so. In rehearsal the hour held a few dozen 200s and 403s and no 429s: nothing had tripped the rule, and the agent said so rather than inventing a count.
+429s, if `scripts/traffic.sh` ran in the hour: a burst of 30 from one address is five passes and the rest 429s, and the data set is sampled, so the count is approximate. Without it, zero rows is a valid answer; the agent says so rather than inventing a count.
 
-## Overview
+## The agent
 
 This is a scheduled platform agent that...
 
@@ -132,14 +149,14 @@ The agent runs in `read_only` mode: it reads the rule, the commits and the traff
 npm run agent
 ```
 
-25 to 30 seconds, 5 steps. On screen, in order: the `edge-agent` box (model, mode, tools, zone), the declared table, then one block per statement:
+25 to 30 seconds, 5 steps. On screen, in order: the `edge-agent` frame (model, mode, tools, zone), the declared table, then one frame per statement, the step number and tool in the top edge, its elapsed time at the right, the statement and the result inside. Reads are cyan; the write is magenta until it is blocked, then red:
 
-- `[01]` `run_select_query`, the rule: `TEMP bot scare 03:12 - put back later`, threshold 5, the `last_updated`
-- `[02]` `run_select_query`, the commits: rows once the folder is pushed, `{"rows":[]}` until then
-- `[03]` `run_select_query`, the traffic: a row per edge status for the hour
-- `[04]` `run_mutation_query`, the REPLACE, then `-> BLOCKED: tool "run_mutation_query" refused: server is in 'read_only' mode`
+- `01  run_select_query`, the rule: `TEMP bot scare 03:12 - put back later`, threshold 5, the `last_updated`
+- `02  run_select_query`, the commits: the manifest's history on `main`, newest first
+- `03  run_select_query`, the traffic: a row per edge status for the hour, 429s among them if `scripts/traffic.sh` ran
+- `04  run_mutation_query`, the REPLACE, then `BLOCKED: tool "run_mutation_query" refused: server is in 'read_only' mode`
 
-Then the report: a four-cell status table ending in `remediate`, the evidence with the rule id and timestamps, the statement "submitted, refused", the statements it ran. Then the `run` box: `steps 5`, `tool calls run_select_query=3 run_mutation_query=1`, `writes attempted 1`, about 46k tokens in, the audit sink and the transcript paths.
+Then the report: a four-cell status table ending in `remediate`, the evidence with the rule id and timestamps, the statement "submitted, refused", the statements it ran. Then the green `run complete` frame: `steps 5`, `tool calls run_select_query=3 run_mutation_query=1`, `writes attempted 1`, about 46k tokens in, the audit sink and the transcript paths.
 
 The same proposal, replayed through the gates with the server in `safe` mode: the policy passes it, the approval box appears, type `y`, and the rule is restored. This is the recovery path for a blocked change: a human, the exact statement, nothing else.
 
@@ -147,7 +164,7 @@ The same proposal, replayed through the gates with the server in `safe` mode: th
 $env:STACKQL_MCP_MODE='safe'; npm run probe
 ```
 
-Under ten seconds plus the pause at the prompt. `mode safe`, `source agent\audit\last-proposal.sql`, the write on one line, then the `APPROVAL REQUIRED` box with the server's question, `Approve run_mutation_query (mutation_create)?`, and the full statement. `approve? [y/N]`, type `y`. The result: `Mutation Result`, `The operation was despatched successfully`, and a timestamp. Terminal 1, first query again: threshold 100, the declared description, a new `last_updated`.
+Under ten seconds plus the pause at the prompt. The `probe` frame (`mode safe`, `source agent\audit\last-proposal.sql`, the write), then the yellow `APPROVAL REQUIRED` frame with the server's question, `Approve run_mutation_query (mutation_create)?`, and the full statement. `approve? [y/N]`, type `y`. The result in a green `APPLIED` frame: `Mutation Result`, `The operation was despatched successfully`, and a timestamp. Terminal 1, first query again: threshold 100, the declared description, a new `last_updated`.
 
 A plausible write that is not the declaration (threshold 1000). The policy declines it before it reaches the server or a human; nobody is asked. The mode is still `safe` in this window; the policy runs first either way.
 
@@ -155,13 +172,13 @@ A plausible write that is not the declaration (threshold 1000). The policy decli
 npm run probe -- ../scripts/denied.sql
 ```
 
-About two seconds, and the one line that matters, in red:
+About two seconds, and a red `BLOCKED` frame with the one line that matters:
 
 ```text
 tool "run_mutation_query" declined by policy (declaration): not the declared rule: $[0].ratelimit.requests_per_period: 1000 vs declared 100
 ```
 
-No box, no server record: the decline is the gate's own audit record.
+No approval asked, no server record: the decline is the gate's own audit record.
 
 The audit sink: every run of the evening in one table, oldest first, local time: the tool, the mode, the decision, the duration and the statement. Never the rows returned. The policy decline is in there too.
 
@@ -206,7 +223,8 @@ scripts/restore.sh && scripts/drift.sh
 - `npm run probe` approves without asking: the server is still `read_only` in this shell, or stdin is not a TTY. Check `$env:STACKQL_MCP_MODE`, use a plain PowerShell window.
 - `npm run probe` with no file replays the agent's last proposal, never the denied statement: only the agent writes `agent/audit/last-proposal.sql`.
 - Cloudflare rejects the REPLACE (400): the token is missing Zone WAF Edit, or the free-plan constraints were changed (period 10, both characteristics, `starts_with`).
-- GitHub query returns zero rows: the demo folder has not been pushed yet, or `DECLARATION_PATH` differs from the path in the repo.
+- GitHub query returns zero rows: `DECLARATION_PATH` differs from the path on origin `main`, or the change is on a branch not yet merged (the query reads the default branch).
+- The frames show as odd characters: the terminal is not rendering UTF-8. Windows Terminal, the VS Code terminal and Git Bash all do.
 - `stackql shell` cannot find a provider: stackql's approot is `.stackql` under the directory it runs from. Run it from the demo root, where `scripts/build.sh` pulled cloudflare, and pull github there once: `stackql exec "REGISTRY PULL github"`.
 - `stackql exec` says `unknown flag: --`: the statement starts with a `--` comment line, which the CLI reads as a flag. The scripts strip comment lines; paste statements without their leading comments.
 - The agent takes extra steps: the briefing gives the traffic window and tells it not to use `CURRENT_TIMESTAMP`, `strftime` or `CAST(... AS INTEGER)`, which do not parse. `AGENT_MAX_STEPS` (12) still caps a bad day.
