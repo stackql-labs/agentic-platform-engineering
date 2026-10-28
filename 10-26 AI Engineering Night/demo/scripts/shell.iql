@@ -1,0 +1,36 @@
+-- The human view of the estate, for `stackql shell`. scripts/shell.sh renders the
+-- placeholders from .env into runs/shell.iql; paste from there.
+
+-- What is live: the rate limit rule on the zone
+SELECT json_extract(rules, '$[0].description') AS description,
+       json_extract(rules, '$[0].ratelimit.requests_per_period') AS threshold,
+       json_extract(rules, '$[0].ratelimit.period') AS period,
+       json_extract(rules, '$[0].enabled') AS enabled,
+       last_updated
+FROM cloudflare.rulesets.phases
+WHERE zone_id = '{{ zone_id }}' AND ruleset_phase = 'http_ratelimit';
+
+-- What is declared, and when it last changed: same query shape, different provider
+SELECT substr(sha, 1, 7) AS sha,
+       json_extract(commit, '$.author.date') AS committed,
+       json_extract(commit, '$.author.name') AS author,
+       json_extract(commit, '$.message') AS message
+FROM github.repos.commits
+WHERE owner = '{{ owner }}' AND repo = '{{ repo }}' AND path = '{{ path }}'
+ORDER BY committed DESC LIMIT 3;
+
+-- Did the rule change after the declaration did? One question across two providers.
+SELECT r.last_updated AS rule_changed,
+       c.committed    AS declaration_changed,
+       r.last_updated > c.committed AS out_of_band
+FROM (SELECT last_updated FROM cloudflare.rulesets.phases
+      WHERE zone_id = '{{ zone_id }}' AND ruleset_phase = 'http_ratelimit') r
+CROSS JOIN
+     (SELECT max(json_extract(commit, '$.author.date')) AS committed FROM github.repos.commits
+      WHERE owner = '{{ owner }}' AND repo = '{{ repo }}' AND path = '{{ path }}') c;
+
+-- Who is being blocked: requests by edge status in the last hour (zero rows is a valid answer)
+SELECT edge_response_status AS status, sum(requests) AS requests
+FROM cloudflare.zones.http_requests_adaptive_groups
+WHERE zone_tag = '{{ zone_id }}' AND since = '{{ since }}' AND until = '{{ until }}'
+GROUP BY edge_response_status ORDER BY requests DESC;

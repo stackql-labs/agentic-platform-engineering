@@ -1,0 +1,115 @@
+[2m+-- [22m[1medge-agent[22m[2m -------------------------------------------------------+[22m
+[2m|[22m [1mmodel[22m gpt-6.1-sol   [1mmode[22m [32mread_only[39m   [1mtools[22m 15   [1mzone[22m stackql.xyz    [2m|[22m
+[2m|[22m [2maudit agent\audit\stackql_mcp_server_2026-10-28T20-34-41-960Z.jsonl[22m [2m|[22m
+[2m+---------------------------------------------------------------------+[22m
+
+[1mdeclared[22m  [2mstack/stackql_manifest.yml[22m
+  [2m+----------------+-----------+--------+---------+----------------------------------------------------+[22m
+  [2m|[22m [1mphase[22m          [2m|[22m [1mthreshold[22m [2m|[22m [1mperiod[22m [2m|[22m [1menabled[22m [2m|[22m [1mdescription[22m                                        [2m|[22m
+  [2m+----------------+-----------+--------+---------+----------------------------------------------------+[22m
+  [2m|[22m http_ratelimit [2m|[22m 100       [2m|[22m 10     [2m|[22m true    [2m|[22m edge-estate rate limit (managed by stackql-deploy) [2m|[22m
+  [2m+----------------+-----------+--------+---------+----------------------------------------------------+[22m
+permitted write: one REPLACE that asserts the declared rule (policy.ts); the server mode decides if it runs
+
+[2m[[22m[1m01[22m [2m  3.7s[22m[2m][22m [36mrun_select_query[39m
+      SELECT id, last_updated, json_extract(rules, '$[0].ratelimit.requests_per_period') AS requests_per_period, json_extract(rules, '$[0].ratelimit.period') AS period, json_extract(rules, '$[0].enabled') AS enabled, json_extract(rules, '$[0].description') AS description FROM cloudflare.rulesets.phases WHERE zone_id = '30850 ...
+      [2m->[22m [2m{"rows":[{"description":"TEMP bot scare 03:12 - put back later","enabled":"1","id":"76a93b9990cc46b88c5d544f3a21389a","last_updated":"2026-10-28T20:31:58.414006Z","period":"10","requests_per_period":" ...[22m
+[2m[[22m[1m02[22m [2m  2.9s[22m[2m][22m [36mrun_select_query[39m
+      SELECT sha, json_extract(commit, '$.author.date') AS author_date, json_extract(commit, '$.author.name') AS author_name, json_extract(commit, '$.message') AS message FROM github.repos.commits WHERE owner = 'stackql-labs' AND repo = 'agentic-platform-engineering' AND path = '10-26 AI Engineering Night/demo/stack/stackql_ ...
+      [2m->[22m [2m{"rows":[]}[22m
+[2m[[22m[1m03[22m [2m  2.8s[22m[2m][22m [36mrun_select_query[39m
+      SELECT edge_response_status, SUM(requests) AS requests FROM cloudflare.zones.http_requests_adaptive_groups WHERE zone_tag = '30850494d46bca19a6b11b842bdac9ff' AND since = '2026-10-28T19:34:42Z' AND until = '2026-10-28T20:34:42Z' GROUP BY edge_response_status
+      [2m->[22m [2m{"rows":[{"edge_response_status":"200","requests":"11"},{"edge_response_status":"403","requests":"13"}]}[22m
+[2m[[22m[1m04[22m [2m  4.8s[22m[2m][22m [35mrun_mutation_query[39m
+      REPLACE cloudflare.rulesets.phases SET rules = '[ { "action": "block", "description": "edge-estate rate limit (managed by stackql-deploy)", "enabled": true, "expression": "(starts_with(http.request.uri.path, \\"/\\"))", "ratelimit": { "characteristics": [ "ip.src", "cf.colo.id" ], "period": 10, "requests_per_period": 1 ...
+      [2m->[22m [31m[1mBLOCKED[22m[39m[31m: tool "run_mutation_query" refused: server is in 'read_only' mode[39m
+
+[2m--- [22m[1mreport[22m [2m---------------------------------------------------------------------[22m
+[1mRate limit review: stackql.xyz[22m
+
+[2m+------------------+----------------+-------------------+-----------+[22m
+[2m|[22m [1mdeclared[22m         [2m|[22m [1mlive[22m           [2m|[22m [1mverdict[22m           [2m|[22m [1maction[22m    [2m|[22m
+[2m+------------------+----------------+-------------------+-----------+[22m
+[2m|[22m 100/10s, enabled [2m|[22m 5/10s, enabled [2m|[22m Out-of-band drift [2m|[22m remediate [2m|[22m
+[2m+------------------+----------------+-------------------+-----------+[22m
+
+The threshold and description differ. No manifest history is visible, so the supplied declaration is treated as current. Remediation was submitted once but [1mrefused by the server's [36mread_only[39m mode[22m. No change was applied.
+
+[1mEvidence[22m
+
+- Zone: [36m30850494d46bca19a6b11b842bdac9ff[39m, phase: [36mhttp_ratelimit[39m.
+- Rule: [36m76a93b9990cc46b88c5d544f3a21389a[39m.
+- Live: [1m5 requests per IP per 10 seconds[22m, enabled.
+- Last updated: [36m2026-10-28T20:31:58.414006Z[39m.
+- Live description: [36mTEMP bot scare 03:12 - put back later[39m. This indicates a temporary bot-related restriction; independent confirmation of the reason was not observed.
+- Declared: [1m100 requests per IP per 10 seconds[22m, enabled, description [36medge-estate rate limit (managed by stackql-deploy)[39m.
+- Manifest history: zero rows. Author, commit date, message and SHA: [1mnot observed[22m. Timestamp ordering against the declaration cannot be established.
+- Traffic window: [36m2026-10-28T19:34:42Z[39m to [36m2026-10-28T20:34:42Z[39m:
+  - HTTP 200: [1m11 requests[22m.
+  - HTTP 403: [1m13 requests[22m.
+  - HTTP 429: [1mnot observed[22m. The 403 responses alone do not establish rate-limit impact.
+
+[1mPermitted statement submitted[22m
+
+[2m    REPLACE cloudflare.rulesets.phases[22m
+[2m    SET rules = '[[22m
+[2m      {[22m
+[2m        "action": "block",[22m
+[2m        "description": "edge-estate rate limit (managed by stackql-deploy)",[22m
+[2m        "enabled": true,[22m
+[2m        "expression": "(starts_with(http.request.uri.path, \\"/\\"))",[22m
+[2m        "ratelimit": {[22m
+[2m          "characteristics": [[22m
+[2m            "ip.src",[22m
+[2m            "cf.colo.id"[22m
+[2m          ],[22m
+[2m          "period": 10,[22m
+[2m          "requests_per_period": 100,[22m
+[2m          "mitigation_timeout": 10[22m
+[2m        }[22m
+[2m      }[22m
+[2m    ]'[22m
+[2m    WHERE zone_id = '30850494d46bca19a6b11b842bdac9ff' AND ruleset_phase = 'http_ratelimit'[22m
+
+[1mStatement log[22m
+
+1. Live rule:
+[2m    SELECT id, last_updated,[22m
+[2m           json_extract(rules, '$[0].ratelimit.requests_per_period') AS requests_per_period,[22m
+[2m           json_extract(rules, '$[0].ratelimit.period') AS period,[22m
+[2m           json_extract(rules, '$[0].enabled') AS enabled,[22m
+[2m           json_extract(rules, '$[0].description') AS description[22m
+[2m    FROM cloudflare.rulesets.phases[22m
+[2m    WHERE zone_id = '30850494d46bca19a6b11b842bdac9ff'[22m
+[2m      AND ruleset_phase = 'http_ratelimit'[22m
+
+2. Manifest history:
+[2m    SELECT sha,[22m
+[2m           json_extract(commit, '$.author.date') AS author_date,[22m
+[2m           json_extract(commit, '$.author.name') AS author_name,[22m
+[2m           json_extract(commit, '$.message') AS message[22m
+[2m    FROM github.repos.commits[22m
+[2m    WHERE owner = 'stackql-labs'[22m
+[2m      AND repo = 'agentic-platform-engineering'[22m
+[2m      AND path = '10-26 AI Engineering Night/demo/stack/stackql_manifest.yml'[22m
+[2m    ORDER BY json_extract(commit, '$.author.date') DESC[22m
+[2m    LIMIT 5[22m
+
+3. Traffic:
+[2m    SELECT edge_response_status, SUM(requests) AS requests[22m
+[2m    FROM cloudflare.zones.http_requests_adaptive_groups[22m
+[2m    WHERE zone_tag = '30850494d46bca19a6b11b842bdac9ff'[22m
+[2m      AND since = '2026-10-28T19:34:42Z'[22m
+[2m      AND until = '2026-10-28T20:34:42Z'[22m
+[2m    GROUP BY edge_response_status[22m
+
+4. The exact [36mREPLACE[39m statement above, attempted once and refused. No retry or workaround.
+
+[2m+-- [22m[1mrun[22m[2m --------------------------------------------------------------+[22m
+[2m|[22m [1mmodel[22m gpt-6.1-sol   [1mmode[22m [32mread_only[39m   [1mfinish[22m stop   [1melapsed[22m 23.9s    [2m|[22m
+[2m|[22m [1msteps[22m 5   [1mtool calls[22m run_select_query=3 run_mutation_query=1        [2m|[22m
+[2m|[22m [1mwrites attempted[22m 1   [2m(the gates decided what happened to them)[22m      [2m|[22m
+[2m|[22m [1mtokens[22m in=45990 out=1593 total=47583                                [2m|[22m
+[2m|[22m [1maudit[22m agent\audit\stackql_mcp_server_2026-10-28T20-34-41-960Z.jsonl [2m|[22m
+[2m|[22m [1mtranscript[22m agent\audit\agent_2026-10-28T20-34-41-960Z.txt           [2m|[22m
+[2m+---------------------------------------------------------------------+[22m
