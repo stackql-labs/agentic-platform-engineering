@@ -2,14 +2,26 @@
 
 Runsheet for the `edge-agent` demo.
 
-## Overview
+## The agent
 
-A scheduled platform agent...
+This is a scheduled platform agent that...
 
-- checks the live rate limit rule on a Cloudflare zone through the StackQL MCP server
-- reasons over it against the rule declared in the stack manifest, the declaration's commit history on GitHub and the last hour of edge traffic; and - proposes at most one write: the assertion of the declared rule. 
+- reads the live state of a Cloudflare zone through StackQL
+- compares it with what the stack manifest declares, and when that declaration last changed
+- decides whether to converge, and proposes exactly one write
 
-Whether that write runs is decided by three gates the platform owns and the model cannot change: a policy in code, the server's mode, and a human at the terminal.
+Whether that write runs is decided by three gates the platform owns, none of which the model can change: a policy in code, the server's mode, and a human at the terminal.
+
+| File | Point at |
+| --- | --- |
+| [stack/stackql_manifest.yml](stack/stackql_manifest.yml#L31-L46) | The desired state (no state file). |
+| [stack/resources/rate_limit.iql](stack/resources/rate_limit.iql#L7-L24) | The assertion: one REPLACE, the same whether it creates or converges. |
+| [agent/prompts/intent.md](agent/prompts/intent.md#L11-L37) | The briefing, in prose: live state first, then decide, one write at most. |
+| [agent/prompts/system.md](agent/prompts/system.md#L38-L53) | The mutation surface: one statement, given to the model verbatim. |
+| [agent/src/policy.ts](agent/src/policy.ts#L1-L14) | The policy gate: four rules, pure function, tested. |
+| [agent/src/agent.ts](agent/src/agent.ts#L70-L75) | The platform sets the server mode in code (`read_only` or `safe`, never `full_access`). |
+| [agent/src/agent.ts](agent/src/agent.ts#L268-L285) | The gate wraps the write tool: policy first, then the server, then the human. |
+| `.env` | The token: scoped to one zone, held by the server process, never seen by the model. |
 
 ## Prerequisites
 
@@ -117,27 +129,6 @@ GROUP BY edge_response_status ORDER BY requests DESC;
 ```
 
 429s, if `scripts/traffic.sh` ran in the hour: a burst of 30 from one address is five passes and the rest 429s, and the data set is sampled, so the count is approximate. Without it, zero rows is a valid answer; the agent says so rather than inventing a count.
-
-## The agent
-
-This is a scheduled platform agent that...
-
-- reads the live state of a Cloudflare zone through StackQL
-- compares it with what the stack manifest declares, and when that declaration last changed
-- decides whether to converge, and proposes exactly one write
-
-Whether that write runs is decided by three gates the platform owns, none of which the model can change: a policy in code, the server's mode, and a human at the terminal.
-
-| File | Point at |
-| --- | --- |
-| [stack/stackql_manifest.yml](stack/stackql_manifest.yml#L31-L46) | The desired state (no state file). |
-| [stack/resources/rate_limit.iql](stack/resources/rate_limit.iql#L7-L24) | The assertion: one REPLACE, the same whether it creates or converges. |
-| [agent/prompts/intent.md](agent/prompts/intent.md#L11-L37) | The briefing, in prose: live state first, then decide, one write at most. |
-| [agent/prompts/system.md](agent/prompts/system.md#L38-L53) | The mutation surface: one statement, given to the model verbatim. |
-| [agent/src/policy.ts](agent/src/policy.ts#L1-L14) | The policy gate: four rules, pure function, tested. |
-| [agent/src/agent.ts](agent/src/agent.ts#L70-L75) | The platform sets the server mode in code (`read_only` or `safe`, never `full_access`). |
-| [agent/src/agent.ts](agent/src/agent.ts#L268-L285) | The gate wraps the write tool: policy first, then the server, then the human. |
-| `.env` | The token: scoped to one zone, held by the server process, never seen by the model. |
 
 ## Run
 
