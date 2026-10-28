@@ -1,0 +1,60 @@
+#
+# edge-estate - one rate limit rule on a Cloudflare zone, as a stackql-deploy stack
+#
+# No state file: every build asserts the rule against the live API (exists ->
+# createorupdate, statecheck -> createorupdate), so a re-run converges whatever a
+# human or an agent changed in between.
+#
+# This file is also the "what should be" of the demo: the agent reads the declared
+# threshold, period and description from here and compares them with what the zone
+# reports. scripts/drift.sh makes the 3am change; `stackql-deploy build` puts it back.
+#
+# Build:    stackql-deploy build stack demo --env-file .env --show-queries
+# Dry run:  stackql-deploy build stack demo --env-file .env --dry-run
+# Teardown: stackql-deploy teardown stack demo --env-file .env   (empties the phase)
+#
+version: 1
+name: edge-estate
+description: a rate limit rule on one Cloudflare zone, for the guardrails demo
+providers:
+  - cloudflare::v26.07.00424
+
+globals:
+  - name: zone_id
+    description: the one zone the token can reach
+    value: "{{ CLOUDFLARE_ZONE_ID }}"
+  - name: ruleset_phase
+    value: http_ratelimit
+
+resources:
+
+  - name: rate_limit
+    description: |
+      block any client over the threshold. The threshold is the value scripts/drift.sh
+      changes; the statecheck compares it, so a build after the drift runs the
+      createorupdate anchor and converges the rule back.
+    props:
+      - name: description
+        value: "edge-estate rate limit (managed by stackql-deploy)"
+      - name: threshold
+        description: requests per period, per client IP
+        value: 100
+      - name: period
+        description: seconds. 10 is the only value the free plan allows
+        value: 10
+    exports:
+      - rate_limit_rule_id
+
+  # what the estate looks like once the stack has converged
+  - name: estate_summary
+    type: query
+    props: []
+    sql: |
+      SELECT json_extract(rules, '$[0].description') AS description,
+             json_extract(rules, '$[0].ratelimit.requests_per_period') AS threshold,
+             json_extract(rules, '$[0].ratelimit.period') AS period,
+             json_extract(rules, '$[0].enabled') AS enabled,
+             last_updated
+      FROM cloudflare.rulesets.phases
+      WHERE zone_id = '{{ zone_id }}'
+        AND ruleset_phase = '{{ ruleset_phase }}';
