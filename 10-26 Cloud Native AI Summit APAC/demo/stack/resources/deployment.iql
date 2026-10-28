@@ -1,5 +1,3 @@
--- shared by web_deployment and checkout_deployment (file: deployment.iql in the manifest)
-
 /*+ exists */
 SELECT COUNT(*) AS count FROM k8s.apps.deployments
 WHERE namespace = '{{ namespace }}'
@@ -28,10 +26,7 @@ SELECT
     }
   }'
 
-/*+ statecheck, retries=20, retry_delay=5 */
--- desired state is replicas AND image: readyReplicas comes back as text through the
--- SQL layer, so compare it as a number. A perturbed image fails this check, which
--- sends the build through the update anchor below.
+/*+ statecheck, retries=3, retry_delay=4 */
 SELECT COUNT(*) AS count FROM (
   SELECT json_extract(metadata, '$.name') AS name,
          CAST(json_extract(spec, '$.replicas') AS REAL) AS want,
@@ -48,8 +43,6 @@ WHERE t.name = '{{ name }}'
   AND t.image = '{{ image }}'
 
 /*+ update */
--- a strategic merge patch replaces the containers list wholesale, so the whole
--- container goes in the patch even when only the image changed
 UPDATE k8s.apps.deployments
 SET spec = '{
     "replicas": {{ replicas }},

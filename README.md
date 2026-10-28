@@ -8,7 +8,7 @@ Talks, demos, and workshop material for building platforms that agents can use s
 
 | Material | Location |
 | --- | --- |
-| Cloud Native AI Summit Melbourne (28 Oct 2026), 20 minutes + 5 minutes Q&A | [Talk A slides](10-26%20Cloud%20Native%20AI%20Summit%20APAC/slides.md) |
+| Cloud Native AI Summit Melbourne (28 Oct 2026), 20 minutes + 5 minutes Q&A | [Talk A deck](10-26%20Cloud%20Native%20AI%20Summit%20APAC/AI%20Native%20Platform%20Engineering%20-%20Agents%20as%20the%20Primary%20Consumer.pptx), [the 3am drift review demo](10-26%20Cloud%20Native%20AI%20Summit%20APAC/demo/README.md) |
 | AI Engineer Sydney (8 Dec 2026), 18 minutes + 2 minutes transition; full-length dry run at AI Engineering Night (29 Oct) | [Talk B slides](11-26%20AI%20Engineer/slides.md), [rehearsal plan](11-26%20AI%20Engineer/rehearsal.md), [separate release-gate demo](11-26%20AI%20Engineer/demo/README.md) |
 | Infracoders, Agentic Platform Engineering with StackQL (15–20 minute slot) | [CFP synopsis](11-26%20Infracoders/cfp.md), [slides](11-26%20Infracoders/slides.md), [StackQL MCP + stackql-deploy demo scaffold](11-26%20Infracoders/demo/README.md) |
 | Half-day workshop, 180 teaching/lab minutes + 30-minute break | [Participant workbook](11-26%20AI%20Engineer/workshop/participant-workbook.md), [facilitator runbook](11-26%20AI%20Engineer/workshop/facilitator-runbook.md) |
