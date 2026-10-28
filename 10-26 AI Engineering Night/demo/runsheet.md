@@ -37,6 +37,18 @@ scripts/shell.sh          # renders runs/shell.iql from .env
 stackql shell             # from this directory: its .stackql holds the cloudflare and github providers
 ```
 
+Or Terminal 1 in PowerShell: load `.env` into the session first (the token is not in the environment otherwise and the shell answers `credentials error: credentialsenvvar references empty string`), then the same shell. Quoted values are unquoted, empty lines are left unset:
+
+```powershell
+cd "C:\LocalGitRepos\stackql\demo-repos\agentic-platform-engineering\10-26 AI Engineering Night\demo"
+Get-Content .env | Where-Object { $_ -match '^\s*[A-Za-z_]\w*\s*=' } | ForEach-Object {
+  $name, $value = $_ -split '=', 2
+  $value = $value.Trim() -replace '^"(.*)"$', '$1'
+  if ($value -ne '') { [Environment]::SetEnvironmentVariable($name.Trim(), $value, 'Process') }
+}
+stackql shell
+```
+
 **Terminal 2 (PowerShell, 120 columns or wider):**
 
 ```powershell
@@ -109,7 +121,11 @@ One question across the two (`CROSS JOIN`; the comma form of the join does not p
 -- Did the rule change after the declaration did?
 SELECT r.last_updated AS rule_changed,
        c.committed    AS declaration_changed,
-       r.last_updated > c.committed AS out_of_band
+       CASE 
+		WHEN c.committed IS NULL THEN 'unknown'
+        WHEN r.last_updated > c.committed THEN 'true'
+        ELSE 'false' 
+	   END AS out_of_band
 FROM (SELECT last_updated FROM cloudflare.rulesets.phases
       WHERE zone_id = '30850494d46bca19a6b11b842bdac9ff' AND ruleset_phase = 'http_ratelimit') r
 CROSS JOIN
@@ -118,7 +134,7 @@ CROSS JOIN
         AND path = '10-26 AI Engineering Night/demo/stack/stackql_manifest.yml') c;
 ```
 
-`out_of_band = 1`: that is the diagnosis, in one query, across two providers. (`null` in both right-hand columns if the commits query returned nothing.)
+`out_of_band = true`: that is the diagnosis, in one query, across two providers. (`unknown`, with `null` beside it, if the commits query returned nothing.)
 
 ```sql
 -- Who is being blocked: requests by edge status today (29 October, AEDT)
@@ -129,6 +145,41 @@ GROUP BY edge_response_status ORDER BY requests DESC;
 ```
 
 429s, if `scripts/traffic.sh` ran today: a burst of 30 from one address is five passes and the rest 429s, and the data set is sampled, so the count is approximate. Without it, zero rows is a valid answer; the agent says so rather than inventing a count.
+
+[OPTIONAL] The art of the possible: the rows come from the API, the final projection is SQLite, so CTEs and window functions run over live data in the same statement. The same traffic as a share of the whole:
+
+```sql
+-- Who is being blocked, and how much of the traffic that is
+WITH t AS (
+  SELECT edge_response_status AS status, sum(requests) AS requests
+  FROM cloudflare.zones.http_requests_adaptive_groups
+  WHERE zone_tag = '30850494d46bca19a6b11b842bdac9ff'
+    AND since = '2026-10-28T13:00:00Z' AND until = '2026-10-29T13:00:00Z'
+  GROUP BY edge_response_status)
+SELECT status, requests,
+       round(100.0 * requests / sum(requests) OVER (), 1) AS pct,
+       sum(requests) OVER (ORDER BY requests DESC)      AS running
+FROM t ORDER BY requests DESC;
+```
+
+`pct` is the share of all requests with that status; in rehearsal the 429s were about 15 percent of the day. And the shape of the blocking over time: 429s per minute since the rule changed this morning, `lag()` for the change from the previous minute, a running total:
+
+```sql
+-- 429s per minute since the rule changed
+WITH m AS (
+  SELECT substr(datetime, 1, 16) AS minute, sum(requests) AS blocked
+  FROM cloudflare.zones.http_requests_adaptive_groups
+  WHERE zone_tag = '30850494d46bca19a6b11b842bdac9ff'
+    AND since = '2026-10-28T21:56:00Z' AND until = '2026-10-29T13:00:00Z'
+    AND edge_response_status = 429
+  GROUP BY substr(datetime, 1, 16))
+SELECT minute, blocked,
+       blocked - lag(blocked, 1, 0) OVER (ORDER BY minute) AS delta,
+       sum(blocked) OVER (ORDER BY minute)                 AS cumulative
+FROM m ORDER BY minute;
+```
+
+Each `scripts/traffic.sh` burst is a spike. Minutes with no 429s are absent rather than zero, so `delta` is against the previous minute that had any, and the counts are sampled.
 
 ## Run
 
@@ -216,6 +267,7 @@ scripts/restore.sh && scripts/drift.sh
 - Cloudflare rejects the REPLACE (400): the token is missing Zone WAF Edit, or the free-plan constraints were changed (period 10, both characteristics, `starts_with`).
 - GitHub query returns zero rows: `DECLARATION_PATH` differs from the path on origin `main`, or the change is on a branch not yet merged (the query reads the default branch).
 - The frames show as odd characters: the terminal is not rendering UTF-8. Windows Terminal, the VS Code terminal and Git Bash all do.
+- `stackql shell` says `credentials error: credentialsenvvar references empty string`: it was started without `CLOUDFLARE_API_TOKEN` in its environment. In Git Bash the scripts source `.env`; in PowerShell load it first (Prerequisites), in the same window.
 - `stackql shell` cannot find a provider: stackql's approot is `.stackql` under the directory it runs from. Run it from the demo root, where `scripts/build.sh` pulled cloudflare, and pull github there once: `stackql exec "REGISTRY PULL github"`.
 - `stackql exec` says `unknown flag: --`: the statement starts with a `--` comment line, which the CLI reads as a flag. The scripts strip comment lines; paste statements without their leading comments.
 - The agent takes extra steps: the briefing gives the traffic window and tells it not to use `CURRENT_TIMESTAMP`, `strftime` or `CAST(... AS INTEGER)`, which do not parse. `AGENT_MAX_STEPS` (12) still caps a bad day.

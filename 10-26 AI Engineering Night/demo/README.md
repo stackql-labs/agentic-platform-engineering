@@ -64,7 +64,7 @@ Before the talk: rule built, `scripts/drift.sh` applied, `scripts/shell.sh` rend
 
 | Beat | Command | What the room sees | Guardrail |
 | --- | --- | --- | --- |
-| The zone at 3am | `stackql shell`, paste from `runs/shell.iql` | threshold 5 (declared 100), the note in the description, `last_updated` at 3am; the declaration's last commit, older; `out_of_band = 1` from one query across two providers; 429s if there has been traffic | 01 |
+| The zone at 3am | `stackql shell`, paste from `runs/shell.iql` | threshold 5 (declared 100), the note in the description, `last_updated` at 3am; the declaration's last commit, older; `out_of_band = true` from one query across two providers; 429s if there has been traffic, and optionally the share and the per-minute shape with a CTE and window functions | 01 |
 | The agent, `read_only` | `npm run agent` | the declared table; one frame per statement: rule, commits, traffic; the diagnosis; the one write proposed; the server refuses it; the agent reports and stops | 01, 03, 04, 05 |
 | The gate, `safe` | `STACKQL_MCP_MODE=safe npm run probe` | the agent's proposal replayed: policy passes it, the approval box, `y`, the rule is restored | 03, 05 |
 | The policy | `npm run probe -- ../scripts/denied.sql` | threshold 1000: declined by policy, `$[0].ratelimit.requests_per_period: 1000 vs declared 100`, before the server or a human is involved | 03, 04 |
