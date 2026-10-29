@@ -26,14 +26,16 @@ That is drift, and it is hurting. A scheduled platform agent reviews the zone wi
 | `agent/src/agent.ts` | the agent. Starts the MCP server in the mode the platform chose, renders the prompts with the declared rule and the permitted write, wraps the write tool with the policy, runs the loop, prints every statement, writes a transcript |
 | `agent/src/policy.ts` | the policy gate: a pure function, `check(sql, declared)`, with `agent/test/policy.test.ts` |
 | `agent/src/declaration.ts` | the declared rule and the permitted write, rendered from the manifest; `agent/test/declaration.test.ts` checks it against the `.iql` anchor field for field |
-| `agent/src/console.ts` | the screen: colour, ASCII boxes and tables, the renderer for the model's markdown report |
+| `agent/src/console.ts` | the screen: colour, box-drawing frames and tables, the renderer for the model's markdown report |
 | `agent/src/audit.ts` | `npm run audit`: every audit sink of the session as one table |
+| `agent/audit/`, `agent/logs/` (untracked) | the server's audit sinks (JSONL, one record per tool call, `STACKQL_AUDIT_FORMAT` for otel) with the transcripts; the engine's own log per run (JSONL: start, every stderr line at `STACKQL_LOG_LEVEL`, exit) |
 | `recordings/` | the transcript of the dry run, for `npm run replay` |
 | `agent/prompts/system.md` | the briefing: the surface, the resource shapes, the one permitted write |
 | `agent/prompts/intent.md` | the intent: the scheduled review, with `{{ placeholders }}` filled from `.env` and the manifest |
 | `scripts/_env.sh` | sourced by the scripts: `.env`, defaults, refuses to run without a named zone |
 | `scripts/build.sh` | `stackql-deploy build`: the rule, and the convergence |
 | `scripts/drift.sh`, `scripts/drift.sql` | the 3am change, one statement |
+| `scripts/traffic.sh` | a burst of requests at the zone, so the hour of traffic has 429s in it |
 | `scripts/restore.sh` | `build.sh` under the name the running order uses, then the rule read back |
 | `scripts/shell.sh`, `scripts/shell.iql` | the human view of the same estate, for `stackql shell` |
 | `scripts/denied.sql` | a plausible write that is not the declaration, for the policy beat |
@@ -59,12 +61,12 @@ cd agent && npm install
 
 ## running order
 
-Before the talk: rule built, `scripts/drift.sh` applied, `scripts/shell.sh` rendered, a terminal in `agent/` with a wide window. [runsheet.md](runsheet.md) is the on-screen walkthrough.
+Before the talk: rule built, `scripts/drift.sh` applied, `scripts/shell.sh` rendered, `scripts/traffic.sh` run within the hour, a terminal in `agent/` with a wide window. [runsheet.md](runsheet.md) is the on-screen walkthrough.
 
 | Beat | Command | What the room sees | Guardrail |
 | --- | --- | --- | --- |
-| The zone at 3am | `stackql shell`, paste from `runs/shell.iql` | threshold 5 (declared 100), the note in the description, `last_updated` at 3am; the declaration's last commit, older; `out_of_band = 1` from one query across two providers; 429s if there has been traffic | 01 |
-| The agent, `read_only` | `npm run agent` | the declared table; the statements stream past: rule, commits, traffic; the diagnosis; the one write proposed; the server refuses it; the agent reports and stops | 01, 03, 04, 05 |
+| The zone at 3am | `stackql shell`, paste from `runs/shell.iql` | threshold 5 (declared 100), the note in the description, `last_updated` at 3am; the declaration's last commit, older; `out_of_band = true` from one query across two providers; 429s if there has been traffic, and optionally the share and the per-minute shape with a CTE and window functions | 01 |
+| The agent, `read_only` | `npm run agent` | the declared table; one frame per statement: rule, commits, traffic; the diagnosis; the one write proposed; the server refuses it; the agent reports and stops | 01, 03, 04, 05 |
 | The gate, `safe` | `STACKQL_MCP_MODE=safe npm run probe` | the agent's proposal replayed: policy passes it, the approval box, `y`, the rule is restored | 03, 05 |
 | The policy | `npm run probe -- ../scripts/denied.sql` | threshold 1000: declined by policy, `$[0].ratelimit.requests_per_period: 1000 vs declared 100`, before the server or a human is involved | 03, 04 |
 | The event log | `npm run audit` | every run of the session in one table: the statement, the mode, the decision, one record each, including the policy decline | 03 |
@@ -82,17 +84,18 @@ Say which mode the server is in before each run.
 - A query is an observation, not a lock. The agent re-reads after a change; nothing here is an atomic precondition.
 - The approval at the terminal is the MCP elicitation flow answered by whoever is at the keyboard. It binds the answer to the exact statement; it is not an authenticated production approval service.
 - The agent's blast radius is the token's: one zone, WAF edit. A broader token would widen it silently; the policy would still hold, the token is the backstop.
-- The traffic query needs traffic. Zero rows is a valid answer and the agent is told to say so.
+- The traffic query needs traffic; `scripts/traffic.sh` makes some. Zero rows is a valid answer and the agent is told to say so.
 - `safe` trusts the MCP client to show the prompt to a person; against an untrusted client use `read_only` or a narrowed tool set.
 
 ## status
 
-Run end to end on 29 October 2026 on Windows 11 (Git Bash for the scripts, PowerShell for the agent) with stackql v0.12.824, `@stackql/mcp-server` 0.12.824, the cloudflare provider v26.07.00424, github v26.08.00448, stackql-deploy 2.4.0, Node 24.19.0, `ai` 7.0.154, `@ai-sdk/openai` 4.0.102, `@ai-sdk/mcp` 2.0.85 and `gpt-6.1-sol`. `npm run typecheck` and `npm test` (18 tests) pass; the `.iql` anchor and the agent's rendered statement are checked field for field.
+Run end to end on 29 October 2026 on Windows 11 (Git Bash for the scripts, PowerShell for the agent) with stackql v0.12.824, `@stackql/mcp-server` 0.12.824, the cloudflare provider v26.07.00424, github v26.08.00448, stackql-deploy 2.4.0, Node 24.19.0, `ai` 7.0.154, `@ai-sdk/openai` 4.0.102, `@ai-sdk/mcp` 2.0.85 and `gpt-6.1-sol`. `npm run typecheck` and `npm test` (19 tests) pass; the `.iql` anchor and the agent's rendered statement are checked field for field.
 
 | Beat | Wall time |
 | --- | --- |
 | `scripts/build.sh`, create or converge | 15 to 17 s, of which 2 to 3 s is the deploy; the rest is stackql-deploy starting its server |
 | `scripts/drift.sh` | about 1 s |
+| `scripts/traffic.sh` | about 7 s for 30 requests over one connection |
 | `npm run tools` | about 1 s |
 | `npm run agent`, `read_only` | 25 to 30 s, 5 steps, 4 tool calls, about 46k tokens in |
 | `npm run probe`, `safe`, approved | about 7 s plus the pause at the prompt |
@@ -100,4 +103,4 @@ Run end to end on 29 October 2026 on Windows 11 (Git Bash for the scripts, Power
 | `npm run audit` | about 1 s |
 | `npm run replay` | about 10 s |
 
-`recordings/agent_dry-run_2026-10-29.txt` is the `read_only` run against the drifted zone, with the GitHub query returning zero rows because the folder was not yet on origin. The zone was left drifted, ready for the talk. The server's three start-up lines on stderr are dropped from the screen; anything else it writes there still shows.
+`recordings/agent_dry-run_2026-10-29.txt` is the `read_only` run against the drifted zone, recorded after the folder was merged to `main`, so the commits query returns the manifest's history and the traffic query shows the 429s from `scripts/traffic.sh`. The zone was left drifted, ready for the talk. The server's three start-up lines on stderr are dropped from the screen; anything else it writes there still shows, and every line it writes there is kept as a JSONL record in `agent/logs/` (the engine runs at `--loglevel info`; `STACKQL_LOG_LEVEL=debug` for more).

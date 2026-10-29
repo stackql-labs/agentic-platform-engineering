@@ -32,7 +32,7 @@ import { Experimental_StdioMCPTransport as StdioMCPTransport } from '@ai-sdk/mcp
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateText, isStepCount, type Tool, type ToolExecutionOptions, type ToolSet } from 'ai';
 
-import { bold, box, cyan, dim, green, magenta, markdown, red, rule, strip, table, wrap, yellow } from './console.js';
+import { bold, box, cyan, dim, green, magenta, markdown, red, rule, strip, table, width, wrap, yellow, type Paint } from './console.js';
 import { assertion, readManifest, type Declaration } from './declaration.js';
 import { check, type Declared } from './policy.js';
 
@@ -59,6 +59,11 @@ const cfg = {
   approot: env('STACKQL_APPROOT', ''), // empty: stackql's own default (~/.stackql), no --approot passed
   bin: env('STACKQL_MCP_BIN', 'stackql'), // the server binary: `stackql` on the PATH unless .env names one
   auditDir: env('STACKQL_AUDIT_DIR', path.resolve('audit')), // audit/ under the cwd: agent/audit with npm run
+  auditFormat: env('STACKQL_AUDIT_FORMAT', 'jsonl'), // the server's audit records: jsonl, or otel (OTLP/JSON log records)
+  otelEndpoint: env('STACKQL_OTEL_ENDPOINT', ''), // optional OTLP/HTTP logs endpoint the server also exports its audit records to
+  otelHeaders: env('STACKQL_OTEL_HEADERS', '{}'), // headers for that endpoint, a JSON object
+  logLevel: env('STACKQL_LOG_LEVEL', 'info'), // the engine's own log level (--loglevel; stackql's default is fatal)
+  logDir: env('STACKQL_LOG_DIR', path.resolve('logs')), // the engine's log, captured as JSONL: logs/ under the cwd, agent/logs with npm run
   recordingsDir: path.join(demoRoot, 'recordings'),
   maxSteps: Number(env('AGENT_MAX_STEPS', '12')),
   zoneId: env('CLOUDFLARE_ZONE_ID', ''),
@@ -75,6 +80,10 @@ if (!ALLOWED_MODES.has(cfg.mode)) {
 }
 if (!cfg.zoneId) {
   console.error('CLOUDFLARE_ZONE_ID is not set (see .env.example)');
+  process.exit(2);
+}
+if (!['jsonl', 'otel'].includes(cfg.auditFormat)) {
+  console.error(`STACKQL_AUDIT_FORMAT=${cfg.auditFormat} is not a server audit format (jsonl | otel)`);
   process.exit(2);
 }
 
@@ -102,6 +111,9 @@ const oneLine = (s: string, max: number) => {
 };
 const runStamp = new Date().toISOString().replace(/[:.]/g, '-');
 const paintMode = (m: string) => (m === 'safe' ? yellow(m) : green(m));
+/** the frames: the terminal's width, at most 120 columns; `fit` wraps text to go inside one */
+const W = width();
+const fit = (s: string, paint: Paint = (x) => x) => wrap(s, W - 4).map(paint);
 
 function render(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
@@ -123,6 +135,22 @@ function newest(dir: string, prefix: string, suffix: string): string | undefined
 const auditFile = path.join(cfg.auditDir, `stackql_mcp_server_${runStamp}.jsonl`);
 const latestAuditLog = () => (existsSync(auditFile) ? auditFile : newest(cfg.auditDir, 'stackql_mcp_server_', '.jsonl'));
 const proposalFile = () => path.join(cfg.auditDir, 'last-proposal.sql');
+
+/** the engine's own log: everything the server writes to stderr, one JSON record per line */
+const serverLogFile = path.join(cfg.logDir, `stackql_mcp_server_${runStamp}.jsonl`);
+function serverLog(record: Record<string, unknown>): void {
+  appendFileSync(serverLogFile, `${JSON.stringify({ timestamp: localIso(), ...record })}\n`);
+}
+/** a stderr line as a record: the engine's logrus fields, the launcher's own lines, or the line as it came */
+function parseServerLine(line: string): Record<string, unknown> {
+  const engine = line.match(/^time="([^"]*)" level=(\w+) msg="((?:[^"\\]|\\.)*)"\s*(.*)$/);
+  if (engine) return { source: 'engine', time: engine[1], level: engine[2], msg: engine[3].replace(/\\"/g, '"'), ...(engine[4] ? { fields: engine[4] } : {}) };
+  const mcp = line.match(/^\[stackql mcp\] (\S+) (.*)$/);
+  if (mcp) return { source: 'mcp', time: mcp[1], msg: mcp[2] };
+  const sink = line.match(/^sink file: (.*)$/);
+  if (sink) return { source: 'mcp', event: 'sink', path: sink[1] };
+  return { source: 'stderr', line };
+}
 
 function audit(record: Record<string, unknown>): void {
   mkdirSync(cfg.auditDir, { recursive: true });
@@ -171,11 +199,11 @@ type JsonSchema = { properties?: Record<string, { type?: string; enum?: unknown[
 
 async function elicit(message: string, requestedSchema: unknown): Promise<ElicitResult> {
   log();
-  const body = ['the server is in safe mode and a write is waiting', '', ...message.split('\n').flatMap((l) => (l.length <= 88 ? [l] : wrap(l, 88)))];
-  for (const l of box(body, 'APPROVAL REQUIRED', yellow)) log(`  ${l}`);
+  const body = ['the server is in safe mode and a write is waiting', '', ...message.split('\n')];
+  for (const l of box(body, { title: 'APPROVAL REQUIRED', edge: yellow, width: W })) log(l);
 
   if (!process.stdin.isTTY) {
-    log(red('  no operator attached (not a TTY): declined')); // a scheduled run has nobody to ask
+    log(red('no operator attached (not a TTY): declined')); // a scheduled run has nobody to ask
     return { action: 'decline' };
   }
 
@@ -184,20 +212,20 @@ async function elicit(message: string, requestedSchema: unknown): Promise<Elicit
     const props = ((requestedSchema ?? {}) as JsonSchema).properties ?? {};
     const content: Record<string, unknown> = {};
     if (Object.keys(props).length === 0) {
-      const a = (await rl.question(bold('  approve? [y/N] '))).trim().toLowerCase();
+      const a = (await rl.question(bold('approve? [y/N] '))).trim().toLowerCase();
       return a === 'y' || a === 'yes' ? { action: 'accept', content: {} } : { action: 'decline' };
     }
     for (const [key, def] of Object.entries(props)) {
       const label = def.description ?? def.title ?? key;
       if (def.type === 'boolean') {
-        const a = (await rl.question(bold(`  ${label} [y/N] `))).trim().toLowerCase();
+        const a = (await rl.question(bold(`${label} [y/N] `))).trim().toLowerCase();
         content[key] = a === 'y' || a === 'yes';
       } else if (Array.isArray(def.enum)) {
-        const a = (await rl.question(`  ${label} (${def.enum.join(' | ')}) `)).trim();
+        const a = (await rl.question(`${label} (${def.enum.join(' | ')}) `)).trim();
         if (!def.enum.map(String).includes(a)) return { action: 'decline' };
         content[key] = a;
       } else {
-        const a = (await rl.question(`  ${label}: `)).trim();
+        const a = (await rl.question(`${label}: `)).trim();
         if (a === '') return { action: 'decline' };
         content[key] = def.type === 'number' || def.type === 'integer' ? Number(a) : a;
       }
@@ -218,10 +246,15 @@ const SERVER_NOISE = /^(stackql-mcp: WARNING Node\.js|sink file: |\[stackql mcp\
 function relayStderr(transport: StdioMCPTransport): void {
   const child = (transport as unknown as { process?: ChildProcess }).process; // set by start(), which createMCPClient awaits
   const stream = child?.stderr;
-  if (!stream) return;
+  if (!child || !stream) return;
+  child.on('exit', (code, signal) => serverLog({ event: 'exit', pid: child.pid, code, signal }));
   let rest = '';
   const relay = (text: string) => {
-    for (const l of text.split(/\r?\n/)) if (l && !SERVER_NOISE.test(l)) process.stderr.write(`${l}\n`);
+    for (const l of text.split(/\r?\n/)) {
+      if (!l) continue;
+      serverLog(parseServerLine(l)); // every line is kept
+      if (!SERVER_NOISE.test(l)) process.stderr.write(`${l}\n`); // the start-up chatter stays off the screen
+    }
   };
   stream.on('data', (chunk: Buffer) => {
     const lines = (rest + chunk.toString()).split(/\r?\n/);
@@ -233,17 +266,22 @@ function relayStderr(transport: StdioMCPTransport): void {
 
 async function startPlatform(): Promise<MCPClient> {
   mkdirSync(cfg.auditDir, { recursive: true });
+  mkdirSync(cfg.logDir, { recursive: true });
   const launcher = path.join(agentRoot, 'node_modules', '@stackql', 'mcp-server', 'bin', 'stackql-mcp.js');
   if (!existsSync(launcher)) throw new Error(`StackQL MCP launcher not found at ${launcher}; run npm install`);
 
-  const serverConfig = { server: { mode: cfg.mode, audit: { disabled: false, file: { path: auditFile } } } };
+  // the server's own logging config: the audit sink, one record per tool call, jsonl or otel,
+  // and optionally an OTLP exporter as well
+  const serverConfig = { server: { mode: cfg.mode, audit: { disabled: false, format: cfg.auditFormat, file: { path: auditFile } } } };
+  const otel = cfg.otelEndpoint ? ['--otel.config', JSON.stringify({ exporter: { endpoint: cfg.otelEndpoint, headers: JSON.parse(cfg.otelHeaders) } })] : [];
   const processEnv = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => typeof e[1] === 'string'));
   processEnv.STACKQL_MCP_BIN = cfg.bin; // the launcher runs this binary instead of downloading one
   const approot = cfg.approot ? ['--approot', cfg.approot] : []; // else the launcher's default, ~/.stackql
+  serverLog({ event: 'start', bin: cfg.bin, mode: cfg.mode, approot: cfg.approot || null, audit: auditFile, audit_format: cfg.auditFormat, otel_endpoint: cfg.otelEndpoint || null, loglevel: cfg.logLevel });
 
   const transport = new StdioMCPTransport({
     command: process.execPath,
-    args: [launcher, ...approot, '--mcp.config', JSON.stringify(serverConfig), '--mcp.log.format=jsonl'],
+    args: [launcher, ...approot, '--mcp.config', JSON.stringify(serverConfig), ...otel, '--loglevel', cfg.logLevel],
     env: processEnv, // the Cloudflare token lives in the server process, never in the model
     cwd: cfg.auditDir,
     stderr: 'pipe', // relayed below, minus the start-up chatter
@@ -291,10 +329,13 @@ function gated(tools: ToolSet, declared: Declared, record = true): ToolSet {
 
 async function listTools(client: MCPClient): Promise<void> {
   const tools = await client.tools();
-  log(`${bold('server')}   ${client.serverInfo.name} ${client.serverInfo.version ?? ''}`);
-  log(`${bold('mode')}     ${paintMode(cfg.mode)}`);
-  log(`${bold('zone')}     ${cfg.zoneName} ${dim(`(${cfg.zoneId})`)}`);
-  log(`${bold('tools')}    ${Object.keys(tools).length}`);
+  const head = [
+    `${bold('server')}  ${client.serverInfo.name} ${client.serverInfo.version ?? ''}`,
+    `${bold('mode')}    ${paintMode(cfg.mode)}`,
+    `${bold('zone')}    ${cfg.zoneName} ${dim(`(${cfg.zoneId})`)}`,
+    `${bold('tools')}   ${Object.keys(tools).length}`,
+  ];
+  for (const l of box(head, { title: 'tool surface', width: W })) log(l);
   for (const name of Object.keys(tools).sort()) log(WRITE_TOOLS.has(name) ? `  ${magenta('[write]')} ${magenta(name)}` : `          ${name}`);
 }
 
@@ -304,15 +345,22 @@ async function probeWrite(client: MCPClient, file?: string): Promise<void> {
   const declared = declaration();
   const source = file ?? (existsSync(proposalFile()) ? proposalFile() : undefined);
   const sql = source ? readFileSync(source, 'utf8').replace(/\{\{\s*zone_id\s*\}\}/g, cfg.zoneId).replace(/^\s*--.*$/gm, '').trim() : declared.sql;
-  log(`${bold('mode')}    ${paintMode(cfg.mode)}`);
-  log(`${bold('source')}  ${source ? path.relative(demoRoot, source) : 'the declared assertion'}`);
-  log(`${bold('write')}   ${oneLine(sql, 400)}`);
+  const [first = '', ...more] = wrap(oneLine(sql, 400), W - 12);
+  const head = [
+    `${bold('mode')}    ${paintMode(cfg.mode)}`,
+    `${bold('source')}  ${source ? path.relative(demoRoot, source) : 'the declared assertion'}`,
+    `${bold('write')}   ${first}`,
+    ...more.map((l) => `        ${l}`),
+  ];
+  for (const l of box(head, { title: 'probe', width: W })) log(l);
   log();
   const tools = gated(await client.tools(), declared, false); // a probe is not a proposal
+  const started = Date.now();
   const result = await (tools['run_mutation_query'] as Tool).execute!({ sql }, { toolCallId: 'probe', messages: [], context: undefined });
   const text = resultText(result);
-  const paint = /declined|refused|denied|error/i.test(text) ? red : green;
-  for (const l of markdown(text)) log(paint(l));
+  const blocked = /declined|refused|denied|error/i.test(text);
+  const paint = blocked ? red : green;
+  for (const l of box(markdown(text, W - 4).map(paint), { title: blocked ? 'BLOCKED' : 'APPLIED', note: elapsed(started), edge: paint, width: W })) log(l);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -348,11 +396,11 @@ async function run(client: MCPClient): Promise<void> {
     `${bold('model')} ${cfg.model}   ${bold('mode')} ${paintMode(cfg.mode)}   ${bold('tools')} ${Object.keys(tools).length}   ${bold('zone')} ${vars.zone_name}`,
     dim(`audit ${path.relative(demoRoot, auditFile)}`),
   ];
-  for (const l of box(head, 'edge-agent')) log(l);
+  for (const l of box(head, { title: 'edge-agent', width: W })) log(l);
   log();
   log(`${bold('declared')}  ${dim('stack/stackql_manifest.yml')}`);
-  for (const l of declaredTable(declared)) log(`  ${l}`);
-  log('permitted write: one REPLACE that asserts the declared rule (policy.ts); the server mode decides if it runs');
+  for (const l of declaredTable(declared)) log(l);
+  log(dim('permitted write: one REPLACE that asserts the declared rule (policy.ts); the server mode decides if it runs'));
   log();
 
   const toolCounts = new Map<string, number>();
@@ -373,19 +421,26 @@ async function run(client: MCPClient): Promise<void> {
         const input = (call.input ?? {}) as Record<string, unknown>;
         const shown = typeof input.sql === 'string' ? input.sql : JSON.stringify(input);
         const write = WRITE_TOOLS.has(call.toolName);
-        log(`${dim('[')}${bold(String(stepNumber + 1).padStart(2, '0'))} ${dim(elapsed(stepStarted).padStart(6))}${dim(']')} ${write ? magenta(call.toolName) : cyan(call.toolName)}`);
-        log(`      ${oneLine(shown, 320)}`);
         const text = resultText(outputs.get(call.toolCallId));
         const blocked = write && /refused|declined/i.test(text);
-        log(`      ${dim('->')} ${blocked ? `${red(bold('BLOCKED'))}${red(`: ${oneLine(text, 200)}`)}` : dim(oneLine(text, 200))}`);
+        const outcome = blocked
+          ? fit(`BLOCKED: ${oneLine(text, 200)}`, red).map((l, n) => (n === 0 ? l.replace('BLOCKED', bold('BLOCKED')) : l))
+          : fit(`-> ${oneLine(text, 200)}`, dim);
+        const frame = {
+          title: `${String(stepNumber + 1).padStart(2, '0')}  ${call.toolName}`,
+          note: elapsed(stepStarted),
+          edge: blocked ? red : write ? magenta : cyan,
+          width: W,
+        };
+        for (const l of box([...fit(oneLine(shown, 320)), ...outcome], frame)) log(l);
+        log();
       }
       stepStarted = Date.now();
     },
   });
 
-  log();
-  log(rule('report'));
-  for (const l of markdown(result.text.trim())) log(l);
+  log(rule('report', W));
+  for (const l of markdown(result.text.trim(), W)) log(l);
   log();
   const usage = result.totalUsage;
   const calls = [...toolCounts.entries()].sort((a, b) => b[1] - a[1]).map(([n, c]) => `${n}=${c}`).join(' ');
@@ -398,8 +453,10 @@ async function run(client: MCPClient): Promise<void> {
     `${bold('tokens')} in=${usage.inputTokens ?? '?'} out=${usage.outputTokens ?? '?'} total=${usage.totalTokens ?? '?'}`,
     `${bold('audit')} ${rel(latestAuditLog())}`,
     `${bold('transcript')} ${rel(transcriptFile)}`,
+    `${bold('server log')} ${rel(serverLogFile)}`,
   ];
-  for (const l of box(summary, 'run')) log(l);
+  const done = result.finishReason === 'stop';
+  for (const l of box(summary, { title: done ? 'run complete' : `run ended: ${result.finishReason}`, edge: done ? green : yellow, width: W })) log(l);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -411,10 +468,10 @@ async function replay(file?: string): Promise<void> {
   if (!target || !existsSync(target)) throw new Error(`no transcript to replay (looked in ${cfg.auditDir} and ${cfg.recordingsDir})`);
   const recorded = statSync(target).mtime.toISOString().slice(0, 16).replace('T', ' ');
   const banner = [`${path.relative(demoRoot, target)}   ${dim(`recorded ${recorded} UTC`)}`, bold('not a live run')];
-  for (const l of box(banner, 'REPLAY', yellow)) console.log(l);
+  for (const l of box(banner, { title: 'REPLAY', edge: yellow, width: W })) console.log(l);
   console.log();
   for (const line of readFileSync(target, 'utf8').split('\n')) {
-    if (/^\[\d\d /.test(strip(line))) await sleep(900);
+    if (/^(\[\d\d |\u250c\u2500 \d\d  )/.test(strip(line))) await sleep(900); // a step: a frame's top edge (or the older line form)
     console.log(line);
     await sleep(40);
   }

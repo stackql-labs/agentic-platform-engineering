@@ -11,7 +11,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { bold, dim, green, red, table, yellow } from './console.js';
+import { bold, box, dim, green, red, table, width, yellow } from './console.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const demoRoot = path.resolve(here, '..', '..');
@@ -69,12 +69,13 @@ const paintDecision = (d: string) => (/declin|refus|denied|error/i.test(d) ? red
 const modes = [...new Set(records.map((r) => str(r.mode)).filter(Boolean))];
 const decisions = new Map<string, number>();
 for (const r of records) decisions.set(str(r.decision) || '?', (decisions.get(str(r.decision) || '?') ?? 0) + 1);
-const width = Math.max(40, (process.stdout.columns ?? 140) - 92);
+const statementWidth = Math.max(40, (process.stdout.columns ?? 140) - 92);
 
-console.log(`${bold('audit log')}  ${files.length === 1 ? path.relative(demoRoot, files[0]) : `${files.length} sinks in ${path.relative(demoRoot, auditDir)}`}`);
-console.log(
+const head = [
+  `${bold('sinks')}      ${files.length === 1 ? path.relative(demoRoot, files[0]) : `${files.length} in ${path.relative(demoRoot, auditDir)}`}`,
   `${bold('records')}    ${records.length}   ${bold('modes')} ${modes.map(paintMode).join(', ') || '?'}   ${bold('decisions')} ${[...decisions].map(([d, n]) => `${paintDecision(d)}=${n}`).join(' ')}`,
-);
+];
+for (const l of box(head, { title: 'audit log', width: width() })) console.log(l);
 console.log();
 const rows = records.map((r) => [
   timeOf(r),
@@ -82,7 +83,7 @@ const rows = records.map((r) => [
   str(r.tool),
   paintDecision(str(r.decision)),
   r.duration_ms !== undefined ? String(r.duration_ms) : '',
-  fit(statementOf(r), width),
+  fit(statementOf(r), statementWidth),
 ]);
 for (const l of table(['time', 'mode', 'tool', 'decision', 'ms', 'statement'], rows)) console.log(l);
 console.log();
