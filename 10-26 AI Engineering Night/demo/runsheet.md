@@ -10,7 +10,13 @@ This is a scheduled platform agent that...
 - compares it with what the stack manifest declares, and when that declaration last changed
 - decides whether to converge, and proposes exactly one write
 
-Whether that write runs is decided by three gates the platform owns, none of which the model can change: a policy in code, the server's mode, and a human at the terminal.
+Whether that write runs is decided by three gates the platform owns, none of which the model can change: a policy in code, the server's mode, and a human at the terminal.  
+
+A typical real life scenario may also include:
+
+- read the shape of the traffic (status, method, country, visits against requests, the minutes since the change), judge whether the declared control is still valid
+- propose a change to the declaration as a pull request through the GitHub provider
+
 
 | File | Point at |
 | --- | --- |
