@@ -59,6 +59,11 @@ const cfg = {
   approot: env('STACKQL_APPROOT', ''), // empty: stackql's own default (~/.stackql), no --approot passed
   bin: env('STACKQL_MCP_BIN', 'stackql'), // the server binary: `stackql` on the PATH unless .env names one
   auditDir: env('STACKQL_AUDIT_DIR', path.resolve('audit')), // audit/ under the cwd: agent/audit with npm run
+  auditFormat: env('STACKQL_AUDIT_FORMAT', 'jsonl'), // the server's audit records: jsonl, or otel (OTLP/JSON log records)
+  otelEndpoint: env('STACKQL_OTEL_ENDPOINT', ''), // optional OTLP/HTTP logs endpoint the server also exports its audit records to
+  otelHeaders: env('STACKQL_OTEL_HEADERS', '{}'), // headers for that endpoint, a JSON object
+  logLevel: env('STACKQL_LOG_LEVEL', 'info'), // the engine's own log level (--loglevel; stackql's default is fatal)
+  logDir: env('STACKQL_LOG_DIR', path.resolve('logs')), // the engine's log, captured as JSONL: logs/ under the cwd, agent/logs with npm run
   recordingsDir: path.join(demoRoot, 'recordings'),
   maxSteps: Number(env('AGENT_MAX_STEPS', '12')),
   zoneId: env('CLOUDFLARE_ZONE_ID', ''),
@@ -75,6 +80,10 @@ if (!ALLOWED_MODES.has(cfg.mode)) {
 }
 if (!cfg.zoneId) {
   console.error('CLOUDFLARE_ZONE_ID is not set (see .env.example)');
+  process.exit(2);
+}
+if (!['jsonl', 'otel'].includes(cfg.auditFormat)) {
+  console.error(`STACKQL_AUDIT_FORMAT=${cfg.auditFormat} is not a server audit format (jsonl | otel)`);
   process.exit(2);
 }
 
@@ -126,6 +135,22 @@ function newest(dir: string, prefix: string, suffix: string): string | undefined
 const auditFile = path.join(cfg.auditDir, `stackql_mcp_server_${runStamp}.jsonl`);
 const latestAuditLog = () => (existsSync(auditFile) ? auditFile : newest(cfg.auditDir, 'stackql_mcp_server_', '.jsonl'));
 const proposalFile = () => path.join(cfg.auditDir, 'last-proposal.sql');
+
+/** the engine's own log: everything the server writes to stderr, one JSON record per line */
+const serverLogFile = path.join(cfg.logDir, `stackql_mcp_server_${runStamp}.jsonl`);
+function serverLog(record: Record<string, unknown>): void {
+  appendFileSync(serverLogFile, `${JSON.stringify({ timestamp: localIso(), ...record })}\n`);
+}
+/** a stderr line as a record: the engine's logrus fields, the launcher's own lines, or the line as it came */
+function parseServerLine(line: string): Record<string, unknown> {
+  const engine = line.match(/^time="([^"]*)" level=(\w+) msg="((?:[^"\\]|\\.)*)"\s*(.*)$/);
+  if (engine) return { source: 'engine', time: engine[1], level: engine[2], msg: engine[3].replace(/\\"/g, '"'), ...(engine[4] ? { fields: engine[4] } : {}) };
+  const mcp = line.match(/^\[stackql mcp\] (\S+) (.*)$/);
+  if (mcp) return { source: 'mcp', time: mcp[1], msg: mcp[2] };
+  const sink = line.match(/^sink file: (.*)$/);
+  if (sink) return { source: 'mcp', event: 'sink', path: sink[1] };
+  return { source: 'stderr', line };
+}
 
 function audit(record: Record<string, unknown>): void {
   mkdirSync(cfg.auditDir, { recursive: true });
@@ -221,10 +246,15 @@ const SERVER_NOISE = /^(stackql-mcp: WARNING Node\.js|sink file: |\[stackql mcp\
 function relayStderr(transport: StdioMCPTransport): void {
   const child = (transport as unknown as { process?: ChildProcess }).process; // set by start(), which createMCPClient awaits
   const stream = child?.stderr;
-  if (!stream) return;
+  if (!child || !stream) return;
+  child.on('exit', (code, signal) => serverLog({ event: 'exit', pid: child.pid, code, signal }));
   let rest = '';
   const relay = (text: string) => {
-    for (const l of text.split(/\r?\n/)) if (l && !SERVER_NOISE.test(l)) process.stderr.write(`${l}\n`);
+    for (const l of text.split(/\r?\n/)) {
+      if (!l) continue;
+      serverLog(parseServerLine(l)); // every line is kept
+      if (!SERVER_NOISE.test(l)) process.stderr.write(`${l}\n`); // the start-up chatter stays off the screen
+    }
   };
   stream.on('data', (chunk: Buffer) => {
     const lines = (rest + chunk.toString()).split(/\r?\n/);
@@ -236,17 +266,22 @@ function relayStderr(transport: StdioMCPTransport): void {
 
 async function startPlatform(): Promise<MCPClient> {
   mkdirSync(cfg.auditDir, { recursive: true });
+  mkdirSync(cfg.logDir, { recursive: true });
   const launcher = path.join(agentRoot, 'node_modules', '@stackql', 'mcp-server', 'bin', 'stackql-mcp.js');
   if (!existsSync(launcher)) throw new Error(`StackQL MCP launcher not found at ${launcher}; run npm install`);
 
-  const serverConfig = { server: { mode: cfg.mode, audit: { disabled: false, file: { path: auditFile } } } };
+  // the server's own logging config: the audit sink, one record per tool call, jsonl or otel,
+  // and optionally an OTLP exporter as well
+  const serverConfig = { server: { mode: cfg.mode, audit: { disabled: false, format: cfg.auditFormat, file: { path: auditFile } } } };
+  const otel = cfg.otelEndpoint ? ['--otel.config', JSON.stringify({ exporter: { endpoint: cfg.otelEndpoint, headers: JSON.parse(cfg.otelHeaders) } })] : [];
   const processEnv = Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => typeof e[1] === 'string'));
   processEnv.STACKQL_MCP_BIN = cfg.bin; // the launcher runs this binary instead of downloading one
   const approot = cfg.approot ? ['--approot', cfg.approot] : []; // else the launcher's default, ~/.stackql
+  serverLog({ event: 'start', bin: cfg.bin, mode: cfg.mode, approot: cfg.approot || null, audit: auditFile, audit_format: cfg.auditFormat, otel_endpoint: cfg.otelEndpoint || null, loglevel: cfg.logLevel });
 
   const transport = new StdioMCPTransport({
     command: process.execPath,
-    args: [launcher, ...approot, '--mcp.config', JSON.stringify(serverConfig), '--mcp.log.format=jsonl'],
+    args: [launcher, ...approot, '--mcp.config', JSON.stringify(serverConfig), ...otel, '--loglevel', cfg.logLevel],
     env: processEnv, // the Cloudflare token lives in the server process, never in the model
     cwd: cfg.auditDir,
     stderr: 'pipe', // relayed below, minus the start-up chatter
@@ -418,6 +453,7 @@ async function run(client: MCPClient): Promise<void> {
     `${bold('tokens')} in=${usage.inputTokens ?? '?'} out=${usage.outputTokens ?? '?'} total=${usage.totalTokens ?? '?'}`,
     `${bold('audit')} ${rel(latestAuditLog())}`,
     `${bold('transcript')} ${rel(transcriptFile)}`,
+    `${bold('server log')} ${rel(serverLogFile)}`,
   ];
   const done = result.finishReason === 'stop';
   for (const l of box(summary, { title: done ? 'run complete' : `run ended: ${result.finishReason}`, edge: done ? green : yellow, width: W })) log(l);

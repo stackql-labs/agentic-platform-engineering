@@ -146,7 +146,7 @@ GROUP BY edge_response_status ORDER BY requests DESC;
 
 429s, if `scripts/traffic.sh` ran today: a burst of 30 from one address is five passes and the rest 429s, and the data set is sampled, so the count is approximate. Without it, zero rows is a valid answer; the agent says so rather than inventing a count.
 
-[OPTIONAL] The art of the possible: the rows come from the API, the final projection is SQLite, so CTEs and window functions run over live data in the same statement. The same traffic as a share of the whole:
+[OPTIONAL] CTEs and window functions run over live data for live analytics. The same traffic as a share of the whole:
 
 ```sql
 -- Who is being blocked, and how much of the traffic that is
@@ -228,7 +228,13 @@ The audit sink: every run of the evening in one table, oldest first, local time:
 npm run audit
 ```
 
-Expect: three `allow` rows and one `refuse_immediate` from the `read_only` run, one `needs_approval_accepted` from the `safe` run (with its duration), one `declined_by_policy` from the gate.
+Expect: three `allow` rows and one `refuse_immediate` from the `read_only` run, one `needs_approval_accepted` from the `safe` run (with its duration), one `declined_by_policy` from the gate.  
+
+Tool use is also logged by the MCP server:
+
+```powershell
+Get-Content (Get-ChildItem logs\*.jsonl | Sort-Object LastWriteTime | Select-Object -Last 1)
+```
 
 [OPTIONAL] The other recovery path: no agent, no approval, re-assert the declaration. The createorupdate anchor runs the same REPLACE whether the rule is missing, drifted or already right, and the statecheck confirms it: `[rate_limit] is in the desired state`. The same command that created it. Git Bash:
 
@@ -271,3 +277,4 @@ scripts/restore.sh && scripts/drift.sh
 - `stackql shell` cannot find a provider: stackql's approot is `.stackql` under the directory it runs from. Run it from the demo root, where `scripts/build.sh` pulled cloudflare, and pull github there once: `stackql exec "REGISTRY PULL github"`.
 - `stackql exec` says `unknown flag: --`: the statement starts with a `--` comment line, which the CLI reads as a flag. The scripts strip comment lines; paste statements without their leading comments.
 - The agent takes extra steps: the briefing gives the traffic window and tells it not to use `CURRENT_TIMESTAMP`, `strftime` or `CAST(... AS INTEGER)`, which do not parse. `AGENT_MAX_STEPS` (12) still caps a bad day.
+- Something odd from the server: its audit records are in `agent/audit/` (one JSONL file per run, `npm run audit` reads them all) and its own log is in `agent/logs/` (one JSONL file per run: start, every line it wrote to stderr at `STACKQL_LOG_LEVEL`, default `info`, exit). `STACKQL_LOG_LEVEL=debug` in `.env` for more.

@@ -6,3 +6,4 @@ agent/node_modules/
 agent/dist/
 *.log
 .stackql-deploy-exports
+logs/

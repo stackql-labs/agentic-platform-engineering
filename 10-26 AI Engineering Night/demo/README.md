@@ -28,6 +28,7 @@ That is drift, and it is hurting. A scheduled platform agent reviews the zone wi
 | `agent/src/declaration.ts` | the declared rule and the permitted write, rendered from the manifest; `agent/test/declaration.test.ts` checks it against the `.iql` anchor field for field |
 | `agent/src/console.ts` | the screen: colour, box-drawing frames and tables, the renderer for the model's markdown report |
 | `agent/src/audit.ts` | `npm run audit`: every audit sink of the session as one table |
+| `agent/audit/`, `agent/logs/` (untracked) | the server's audit sinks (JSONL, one record per tool call, `STACKQL_AUDIT_FORMAT` for otel) with the transcripts; the engine's own log per run (JSONL: start, every stderr line at `STACKQL_LOG_LEVEL`, exit) |
 | `recordings/` | the transcript of the dry run, for `npm run replay` |
 | `agent/prompts/system.md` | the briefing: the surface, the resource shapes, the one permitted write |
 | `agent/prompts/intent.md` | the intent: the scheduled review, with `{{ placeholders }}` filled from `.env` and the manifest |
@@ -102,4 +103,4 @@ Run end to end on 29 October 2026 on Windows 11 (Git Bash for the scripts, Power
 | `npm run audit` | about 1 s |
 | `npm run replay` | about 10 s |
 
-`recordings/agent_dry-run_2026-10-29.txt` is the `read_only` run against the drifted zone, recorded after the folder was merged to `main`, so the commits query returns the manifest's history and the traffic query shows the 429s from `scripts/traffic.sh`. The zone was left drifted, ready for the talk. The server's three start-up lines on stderr are dropped from the screen; anything else it writes there still shows.
+`recordings/agent_dry-run_2026-10-29.txt` is the `read_only` run against the drifted zone, recorded after the folder was merged to `main`, so the commits query returns the manifest's history and the traffic query shows the 429s from `scripts/traffic.sh`. The zone was left drifted, ready for the talk. The server's three start-up lines on stderr are dropped from the screen; anything else it writes there still shows, and every line it writes there is kept as a JSONL record in `agent/logs/` (the engine runs at `--loglevel info`; `STACKQL_LOG_LEVEL=debug` for more).
