@@ -1,123 +1,89 @@
-# Agentic Platform Engineering with StackQL
+# Stateless IaC for Agents: stackql-deploy
 
-**Infracoders** · speaking slot: 15–20 minutes · planned content: 18 minutes  
-**Thesis:** As agents operate infrastructure, the "C" in IaC shifts from Code to Context. Query actual provider state before proposing changes; use a declarative, statefile-less deployment framework to converge toward reviewed intent.
+**Infracoders Melbourne, November meetup** - 10 November 2026 - presentation 1 of 2 - about 25 minutes including about 5 for Q&A.
 
-This is an event-specific talk. The separate AI Engineer talk covers release provenance and rollout gates; this session focuses on StackQL, provider context, MCP-based discovery, and `stackql-deploy`.
+**Thesis:** an agent should read the live estate freely and write only by asserting a reviewed declaration. `stackql-deploy` makes that practical because it keeps no state file: every build asks the provider what exists, compares it with what is declared, and creates or updates only what differs.
 
-## Slide 1 — Title · 0:45 (0:45)
+The deck is [slides/Stateless IaC for Agents.pptx](slides/Stateless%20IaC%20for%20Agents.pptx); speaker notes are in the file. The demo is in [demo/](demo/README.md), with an on-screen [runsheet](demo/runsheet.md). This outline is the running order and the clock.
 
-**Agentic Platform Engineering with StackQL**
+## Running order
 
-As agents start operating infrastructure, the "C" in IaC shifts from Code to Context.
+| # | Slide | Time | Clock |
+| --- | --- | ---: | ---: |
+| 1 | Title: Stateless IaC for Agents | 0:30 | 0:30 |
+| 2 | StackQL: unified cross-plane analytics, automation and IaC | 0:45 | 1:15 |
+| 3 | Cloud providers as data sources | 1:00 | 2:15 |
+| 4 | How to use StackQL: one engine, four consumption patterns | 0:45 | 3:00 |
+| 5 | Section: Agentic platform ops | 0:15 | 3:15 |
+| 6 | IaC and platform ops in the agent era: four assumptions inverted | 1:15 | 4:30 |
+| 7 | Infrastructure-as-code becomes infrastructure-as-context | 0:30 | 5:00 |
+| 8 | The new contract: query, reason about and act on actual state | 0:45 | 5:45 |
+| 9 | Section: StackQL MCP | 0:15 | 6:00 |
+| 10 | What the StackQL MCP server is | 0:45 | 6:45 |
+| 11 | The MCP tool surface, modes and audit | 1:00 | 7:45 |
+| 12 | Section: stackql-deploy, the write path for agents | 0:15 | 8:00 |
+| 13 | State file-less IaC | 1:30 | 9:30 |
+| 14 | Read wide, write narrow | 1:30 | 11:00 |
+| 15 | One declaration, every cell (the demo map) | 1:00 | 12:00 |
+| 16 | Demo | 6:30 | 18:30 |
+| 17 | Same interface, other jobs | 0:45 | 19:15 |
+| 18 | What to take home | 0:30 | 19:45 |
+| 19 | Thank you | 0:15 | 20:00 |
 
-**Speaker note:** This is a platform interface change, not a claim that code, review, or operators disappear.
+If the clock is behind at slide 12, cut slide 17 to one sentence and go from the demo to slide 18.
 
-## Slide 2 — IaC's missing input · 1:15 (2:00)
+## What each new slide carries
 
-- Infrastructure code describes intended changes.
-- State snapshots and plans can age while the real provider keeps changing.
-- An agent needs current, explainable context before it recommends an action.
-- Querying state is necessary—but it does not itself authorize mutation.
+### 12. stackql-deploy (section)
 
-## Slide 3 — Context as a first-class interface · 1:30 (3:30)
+The MCP server is how an agent reads. `stackql-deploy` is how it should write. Open source, SQL-native, on the same engine. The one thing to remember: no state file.
 
-**Discover → query → compare → propose → converge → verify**
+### 13. State file-less IaC
 
-- Make provider resources discoverable as structured data.
-- Keep evidence close to the target and observation time.
-- Put deterministic policy and operator approval between reasoning and writes.
-- Re-query after convergence; distinguish observed state from intended state.
+- A resource is a file of SQL with named anchors: `exists`, `create`, `statecheck`, `update`, `exports`.
+- `exists` and `statecheck` are SELECTs against the live API; `create` and `update` run only when they answer no.
+- Run it twice and the second run changes nothing. Run it after drift and it converges.
+- Nothing is remembered between runs, so nothing can disagree with reality.
 
-## Slide 4 — StackQL: providers as queryable data · 1:30 (5:00)
+Caveat to say aloud: no lock also means two writers can race. Idempotent assertions make a race converge; they do not make it atomic.
 
-- StackQL exposes cloud and SaaS provider resources through SQL.
-- SQL provides a familiar, composable read surface for agent tools.
-- Provider/resource discovery lets the agent learn available fields and operations.
-- Keep reads narrow and explicit; avoid dumping entire provider schemas into context.
+### 14. Read wide, write narrow
 
-**Caveat:** Provider coverage, permissions, API freshness, and supported methods vary. A query result is evidence, not a guarantee that the underlying system cannot change.
+Two doors for an agent: one to look, one to change.
 
-## Slide 5 — MCP connects the agent to provider context · 1:30 (6:30)
+- Read: the StackQL MCP server in `read_only` mode. Any SELECT, control plane and data plane, credentials in the server process, every statement audited.
+- Write: the agent cannot run a write statement and never edits the manifest or the queries. Its only write is asking for `stackql-deploy build` of the reviewed stack.
+- Drift: the build runs the stack as written and puts things back. No file changes.
+- Rollout: one line in one cell file (the release) moves to the release already approved in `rollout.env`. The gate makes that edit, not the model, after a person approves. Then the same build.
+- Tuning (spoken, not in the demo): the rollout case with a different limit. One value, such as a rate limit, moves inside bounds declared in the manifest; the gate checks the number against the bounds, then the same build. Because the state check is a query it can also accept a range instead of one value, so a build leaves an in-range value alone and resets anything outside it. Range and set checks run today; a first-class tunable in the manifest is an idea, not a feature.
+- In front of all three: policy in code, then a human on the exact command.
+- The agent decides when to ask. The reviewed stack decides what changes.
 
-**Agent ↔ StackQL MCP server ↔ provider/resource**
+If an agent should change what the stack says, that is a pull request, reviewed like any other change. It is not this path.
 
-- The MCP server exposes StackQL discovery and query capabilities to the agent.
-- The agent can inspect live state without embedding provider-specific SDK logic in its prompt.
-- Use a deliberately scoped connector and a least-privilege identity.
-- Treat returned fields and descriptions as untrusted data; they do not override policy.
+### 15. One declaration, every cell
 
-**Show:** the configured StackQL MCP connector in the Anthropic connector directory and its available read/query tools. Never show credential values.
+The demo estate: an `orders` service in three cells (Sydney, Oregon, Frankfurt), each one region and one rollout wave. One manifest describes a cell; a file per cell says where it is and which release it runs. Release 1.5.0 is on the canary; the rest are on 1.4.0; Frankfurt is built on stage.
 
-## Slide 6 — From queried state to declarative intent · 1:30 (8:00)
+### 16. Demo
 
-- Separate observed context from reviewed desired state.
-- `stackql-deploy` evaluates resources against their declared state.
-- A build can create or update resources when current state differs from the declaration.
-- Re-running the build converges without maintaining a separate state file.
+See the [runsheet](demo/runsheet.md). Five beats: build a cell from nothing and again; the whole rollout in one query; drift on the canary; the gate declining without the model; the agent converging the canary and promoting the next wave, each with an approval.
 
-**Caveat:** Statefile-less does not mean policy-free, transactionally atomic, or drift-proof. The provider remains the authority; changes between observation and execution still matter.
+### 17. Same interface, other jobs
 
-## Slide 7 — Demo map · 0:30 (8:30)
+Rollout gate (the demo), posture sweep, incident triage, cost analysis, 3am drift review, environment reaper. The agent does not need a new tool per job: it needs SQL, discovery and a narrow way to write.
 
-**Disposable local cluster only**
+### 18. What to take home
 
-1. Query the demo deployment through StackQL MCP.
-2. Compare live image/replicas to the reviewed manifest.
-3. Demonstrate a bounded, intentional drift.
-4. Run `stackql-deploy` in dry-run mode; review generated queries.
-5. Explicitly approve the local build; re-query to verify convergence.
+Code declares intent. Context grounds the decision. Policy bounds the action.
 
-## Slide 8 — Live demo · 5:00 (13:30)
+## Likely questions
 
-| Time | Beat |
+| Question | Short answer |
 | --- | --- |
-| 0:00–0:40 | State the live/fixture label and confirm the disposable target. |
-| 0:40–1:30 | Use the Anthropic StackQL MCP connector to read the deployment and its labels, image, replicas, and readiness. |
-| 1:30–2:10 | Compare the result with the manifest; explain that live observation is context, not approval. |
-| 2:10–2:50 | Show bounded drift on the disposable target; do not touch any other context. |
-| 2:50–3:50 | Run `stackql-deploy build` dry run and inspect the planned SQL. |
-| 3:50–4:30 | Confirm the fixed demo target and apply the declarative build. |
-| 4:30–5:00 | Query again, show convergence, and label the result accurately. |
-
-**Fallback:** labelled fixture replay of the same query/plan/verification beats. Do not call fixture data live evidence.
-
-## Slide 9 — Guardrails around query-before-mutation · 1:30 (15:00)
-
-- A query is not an authorization decision.
-- Bind every proposal to the target, evidence, and intended values.
-- Keep MCP credentials scoped to the disposable environment.
-- Review `stackql-deploy`'s dry-run queries before building.
-- Use an explicit operator confirmation and verify with a fresh query.
-- Treat uncertain outcomes as a reason to inspect—not blindly retry.
-
-## Slide 10 — What statefile-less changes (and doesn't) · 1:30 (16:30)
-
-- Removes a separate state snapshot that can diverge from provider reality.
-- Makes each build evaluate current provider state against declared intent.
-- Does not eliminate stale reads, API races, provider limits, or semantic errors.
-- Does not replace approvals, identity controls, audit retention, or rollback.
-
-## Slide 11 — Close · 1:30 (18:00)
-
-**Code declares intent. Context grounds the decision. Policy bounds the action.**
-
-StackQL makes provider context queryable; `stackql-deploy` makes reviewed intent convergent. The agent proposes—the platform and operator control what happens next.
-
-## Timing summary
-
-| Slide | Duration | Cumulative |
-| --- | ---: | ---: |
-| 1 | 0:45 | 0:45 |
-| 2 | 1:15 | 2:00 |
-| 3 | 1:30 | 3:30 |
-| 4 | 1:30 | 5:00 |
-| 5 | 1:30 | 6:30 |
-| 6 | 1:30 | 8:00 |
-| 7 | 0:30 | 8:30 |
-| 8 | 5:00 | 13:30 |
-| 9 | 1:30 | 15:00 |
-| 10 | 1:30 | 16:30 |
-| 11 | 1:30 | 18:00 |
-
-The 18-minute content fits the requested 15–20 minute slot; hold the remaining two minutes as delivery buffer.
+| How is this different from `terraform plan`, which also refreshes? | Plan refreshes into a state file that then has to be stored, locked and kept honest for every writer. Here the checks are queries you can read and run by hand, and there is no artefact to share between a pipeline, a person and an agent. |
+| What stops two builds racing? | Nothing locks. Each assertion is idempotent, so a race converges rather than corrupts. If you need mutual exclusion, put it in the pipeline or the gate. |
+| How do deletes work without state? | `teardown` runs the `delete` anchors in reverse order. A resource removed from the manifest is not deleted by a build; that is a deliberate difference from state-based tools. |
+| Why not let the agent write SQL in `safe` mode with approvals? | It works, and the MCP server supports it. Asserting a declaration is narrower: the human approves a known command, not a statement they have to read for intent. |
+| Which providers? | Anything in the StackQL registry: AWS, Google, Azure, Kubernetes, GitHub, Okta, Databricks, Snowflake, Cloudflare and others. The demo is AWS only. |
+| Does the model see credentials? | No. They live in the stackql server and stackql-deploy processes. |

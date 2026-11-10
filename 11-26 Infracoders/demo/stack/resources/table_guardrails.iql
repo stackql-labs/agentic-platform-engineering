@@ -1,0 +1,24 @@
+/*+ exists */
+SELECT COUNT(*) AS count
+FROM aws.dynamodb.tables
+WHERE region     = '{{ region }}'
+  AND table_name = '{{ table_name }}'
+
+/*+ create */
+UPDATE aws.dynamodb.tables
+SET DeletionProtectionEnabled = true
+WHERE region     = '{{ region }}'
+  AND table_name = '{{ table_name }}'
+
+/*+ statecheck, retries=2, retry_delay=1 */
+SELECT COUNT(*) AS count
+FROM aws.dynamodb.tables
+WHERE region     = '{{ region }}'
+  AND table_name = '{{ table_name }}'
+  AND deletion_protection_enabled = true
+
+/*+ update */
+UPDATE aws.dynamodb.tables
+SET DeletionProtectionEnabled = true
+WHERE region     = '{{ region }}'
+  AND table_name = '{{ table_name }}'

@@ -18,7 +18,7 @@ This public teaching repository contains talk material, recorded/live demo asset
 
 - `10-26 Cloud Native AI Summit APAC/`: Summit A slides and its incident-repair demo.
 - `11-26 AI Engineer/`: Talk B, its distinct release-promotion demo, and workshop assets.
-- `11-26 Infracoders/`: StackQL provider-context talk, CFP synopsis, and separate MCP/`stackql-deploy` demo.
+- `11-26 Infracoders/`: the stateless IaC talk (`stackql-deploy`), its abstract, and its own three-region AWS demo: a read-only MCP surface plus a gated `stackql-deploy` write path.
 - Each event owns its talk-specific examples; do not assume demo fixtures or content are shared.
 
 Read the local README and the relevant demo/workshop runbook before changing execution instructions. This file is the source of truth for repository agent guidance; `CLAUDE.md` and `.github/copilot-instructions.md` point here.

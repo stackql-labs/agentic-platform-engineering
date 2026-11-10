@@ -1,0 +1,31 @@
+-- the human view of the same estate, for `stackql shell` run from the demo root.
+-- Paste one statement at a time.
+
+-- 1. the rollout board: three regions, two services, one statement, no state file
+SELECT r.region, r.value AS running, r.version AS changes, t.table_status,
+       t.deletion_protection_enabled AS deletion_protection
+FROM aws.ssm.parameters_by_paths r
+INNER JOIN aws.dynamodb.tables t ON r.region = t.region
+WHERE r.region IN ('ap-southeast-2', 'us-west-2', 'eu-central-1') AND r.Path = '/orders'
+  AND t.region IN ('ap-southeast-2', 'us-west-2', 'eu-central-1') AND t.TableName = 'orders'
+ORDER BY r.region;
+
+-- 2. who changed the canary's table, and when (CloudTrail; a few minutes behind)
+SELECT e.at_utc, e.event_name, e.username, e.table_name, e.deletion_protection
+FROM (
+  SELECT datetime(event_time, 'unixepoch') AS at_utc, event_name, username,
+         json_extract(cloud_trail_event, '$.requestParameters.tableName') AS table_name,
+         json_extract(cloud_trail_event, '$.requestParameters.deletionProtectionEnabled') AS deletion_protection
+  FROM aws.cloudtrail.events
+  WHERE region = 'ap-southeast-2'
+    AND LookupAttributes = '[{"AttributeKey": "EventName", "AttributeValue": "UpdateTable"}]'
+) e
+WHERE e.table_name = 'orders'
+ORDER BY e.at_utc DESC
+LIMIT 3;
+
+-- 3. the posture sweep on its own: every cell's table, one statement
+SELECT region, table_name, table_status, deletion_protection_enabled, item_count
+FROM aws.dynamodb.tables
+WHERE region IN ('ap-southeast-2', 'us-west-2', 'eu-central-1') AND TableName = 'orders'
+ORDER BY region;

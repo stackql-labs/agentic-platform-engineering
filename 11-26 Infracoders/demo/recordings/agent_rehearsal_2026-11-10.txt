@@ -1,0 +1,179 @@
+[36m┌[39m[36m─[39m [36m[1mrollout-agent[22m[39m [36m──────────────────────────────────────────────────────────────────────────────────────────────────────[39m[36m┐[39m
+[36m│[39m [1mmodel[22m gpt-6.1-sol   [1mread[22m StackQL MCP, [32mread_only[39m   [1mwrite[22m stackql-deploy, [33mgated[39m                                        [36m│[39m
+[36m│[39m [1mrollout[22m orders 1.4.0 -> [32m1.5.0[39m                                                                                        [36m│[39m
+[36m│[39m [2maudit agent/audit/stackql_mcp_server_2026-11-09T23-55-38-022Z.jsonl[22m                                                  [36m│[39m
+[36m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+
+[1mdeclared[22m  [2mcells/*.env + stack/stackql_manifest.yml, no state file[22m
+[36m┌──────┬────────────────┬──────┬──────────┬───────┐[39m
+[36m│[39m [1mcell[22m [36m│[39m [1mregion[22m         [36m│[39m [1mwave[22m [36m│[39m [1mdeclared[22m [36m│[39m [1mbuilt[22m [36m│[39m
+[36m├──────┼────────────────┼──────┼──────────┼───────┤[39m
+[36m│[39m syd  [36m│[39m ap-southeast-2 [36m│[39m 0    [36m│[39m [32m1.5.0[39m    [36m│[39m yes   [36m│[39m
+[36m│[39m pdx  [36m│[39m us-west-2      [36m│[39m 1    [36m│[39m 1.4.0    [36m│[39m yes   [36m│[39m
+[36m│[39m fra  [36m│[39m eu-central-1   [36m│[39m 2    [36m│[39m 1.4.0    [36m│[39m yes   [36m│[39m
+[36m└──────┴────────────────┴──────┴──────────┴───────┘[39m
+
+[36m┌[39m[36m─[39m [36m[1m01  run_select_query[22m[39m [36m────────────────────────────────────────────────────────────────────────────────────────[39m [36m1.3s[39m [36m─[39m[36m┐[39m
+[36m│[39m SELECT r.region, r.value AS running, r.version AS changes, t.table_status, t.deletion_protection_enabled AS          [36m│[39m
+[36m│[39m deletion_protection                                                                                                  [36m│[39m
+[36m│[39m FROM aws.ssm.parameters_by_paths r                                                                                   [36m│[39m
+[36m│[39m INNER JOIN aws.dynamodb.tables t ON r.region = t.region                                                              [36m│[39m
+[36m│[39m WHERE r.region IN ('ap-southeast-2', 'us-west-2', 'eu-central-1') AND r.Path = '/orders'                             [36m│[39m
+[36m│[39m AND t.region IN ('ap-southeast-2', 'us-west-2', 'eu-central-1') AND t.TableName = 'orders'                           [36m│[39m
+[36m│[39m ORDER BY r.region                                                                                                    [36m│[39m
+[36m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+  [36m┌────────────────┬─────────┬─────────┬──────────────┬─────────────────────┐[39m
+  [36m│[39m [1mregion[22m         [36m│[39m [1mrunning[22m [36m│[39m [1mchanges[22m [36m│[39m [1mtable_status[22m [36m│[39m [1mdeletion_protection[22m [36m│[39m
+  [36m├────────────────┼─────────┼─────────┼──────────────┼─────────────────────┤[39m
+  [36m│[39m ap-southeast-2 [36m│[39m 1.5.0   [36m│[39m 1       [36m│[39m ACTIVE       [36m│[39m [31m[1mfalse[22m[39m               [36m│[39m
+  [36m│[39m eu-central-1   [36m│[39m 1.4.0   [36m│[39m 1       [36m│[39m ACTIVE       [36m│[39m [32mtrue[39m                [36m│[39m
+  [36m│[39m us-west-2      [36m│[39m 1.4.0   [36m│[39m 11      [36m│[39m ACTIVE       [36m│[39m [32mtrue[39m                [36m│[39m
+  [36m└────────────────┴─────────┴─────────┴──────────────┴─────────────────────┘[39m
+
+[36m┌[39m[36m─[39m [36m[1m02  run_select_query[22m[39m [36m────────────────────────────────────────────────────────────────────────────────────────[39m [36m0.4s[39m [36m─[39m[36m┐[39m
+[36m│[39m SELECT e.at_utc, e.event_name, e.username, e.table_name, e.deletion_protection                                       [36m│[39m
+[36m│[39m FROM (                                                                                                               [36m│[39m
+[36m│[39m SELECT datetime(event_time, 'unixepoch') AS at_utc, event_name, username,                                            [36m│[39m
+[36m│[39m json_extract(cloud_trail_event, '$.requestParameters.tableName') AS table_name,                                      [36m│[39m
+[36m│[39m json_extract(cloud_trail_event, '$.requestParameters.deletionProtectionEnabled') AS deletion_protection              [36m│[39m
+[36m│[39m FROM aws.cloudtrail.events                                                                                           [36m│[39m
+[36m│[39m WHERE region = 'ap-southeast-2'                                                                                      [36m│[39m
+[36m│[39m AND LookupAttributes = '[{"AttributeKey": "EventName", "AttributeValue": "UpdateTable"}]'                            [36m│[39m
+[36m│[39m ) e                                                                                                                  [36m│[39m
+[36m│[39m WHERE e.table_name = 'orders'                                                                                        [36m│[39m
+[36m│[39m ORDER BY e.at_utc DESC                                                                                               [36m│[39m
+[36m│[39m LIMIT 3                                                                                                              [36m│[39m
+[36m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+  [36m┌─────────────────────┬─────────────┬──────────────┬────────────┬─────────────────────┐[39m
+  [36m│[39m [1mat_utc[22m              [36m│[39m [1mevent_name[22m  [36m│[39m [1musername[22m     [36m│[39m [1mtable_name[22m [36m│[39m [1mdeletion_protection[22m [36m│[39m
+  [36m├─────────────────────┼─────────────┼──────────────┼────────────┼─────────────────────┤[39m
+  [36m│[39m 2026-11-09 23:53:14 [36m│[39m UpdateTable [36m│[39m jeffrey.aven [36m│[39m orders     [36m│[39m [31m[1m0[22m[39m                   [36m│[39m
+  [36m│[39m 2026-11-09 23:50:08 [36m│[39m UpdateTable [36m│[39m jeffrey.aven [36m│[39m orders     [36m│[39m [32m1[39m                   [36m│[39m
+  [36m│[39m 2026-11-09 23:46:38 [36m│[39m UpdateTable [36m│[39m jeffrey.aven [36m│[39m orders     [36m│[39m [31m[1m0[22m[39m                   [36m│[39m
+  [36m└─────────────────────┴─────────────┴──────────────┴────────────┴─────────────────────┘[39m
+
+[35m┌[39m[35m─[39m [35m[1m03  cell_converge[22m[39m [35m──────────────────────────────────────────────────────────────────────────────────────────────────[39m[35m┐[39m
+[35m│[39m [1mconverge[22m syd                                                                                                         [35m│[39m
+[35m│[39m [2mreason: Live syd serves declared 1.5.0 with orders ACTIVE, but deletion protection is false. CloudTrail shows[22m        [35m│[39m
+[35m│[39m [2mjeffrey.aven set deletion protection off at 2026-11-09 23:53:14 UTC, after enabling it at 23:50:08 UTC; restore the[22m  [35m│[39m
+[35m│[39m [2mreviewed declaration before advancing.[22m                                                                               [35m│[39m
+[35m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+  [32mpolicy[39m [1msyd[22m [2m(ap-southeast-2, wave 0)[22m  [2mdeclared 1.5.0, candidate 1.5.0[22m
+
+[33m┌[39m[33m─[39m [33m[1mAPPROVAL REQUIRED[22m[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────────[39m[33m┐[39m
+[33m│[39m [1mconverge[22m [1msyd[22m [2m(ap-southeast-2, wave 0)[22m                                                                                [33m│[39m
+[33m│[39m [1mcommand[22m      stackql-deploy build stack syd --env-file cells/syd.env                                                 [33m│[39m
+[33m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+[1mapprove? [y/N] [22my
+  [35m│[39m [2m$ stackql-deploy build stack syd --env-file cells/syd.env[22m
+  [35m│[39m [2m[table] exists[22m
+  [35m│[39m [2m[table] is in the desired state[22m
+  [35m│[39m [2m[table_guardrails] exists[22m
+  [35m│[39m [33m[table_guardrails] is not in the desired state[39m
+  [35m│[39m [35mupdating [table_guardrails]...[39m
+  [35m│[39m [2m[table_guardrails] exists[22m
+  [35m│[39m [2m[table_guardrails] is in the desired state[22m
+  [35m│[39m [2m[release] exists[22m
+  [35m│[39m [2m[release] is in the desired state[22m
+  [35m│[39m [2mdeployment completed in 4.52s[22m
+  [32mAPPLIED: syd: converged: table_guardrails changed[39m
+[2m  19.6s[22m
+
+[36m┌[39m[36m─[39m [36m[1m04  run_select_query[22m[39m [36m────────────────────────────────────────────────────────────────────────────────────────[39m [36m1.1s[39m [36m─[39m[36m┐[39m
+[36m│[39m SELECT r.region, r.value AS running, r.version AS changes, t.table_status, t.deletion_protection_enabled AS          [36m│[39m
+[36m│[39m deletion_protection                                                                                                  [36m│[39m
+[36m│[39m FROM aws.ssm.parameters_by_paths r                                                                                   [36m│[39m
+[36m│[39m INNER JOIN aws.dynamodb.tables t ON r.region = t.region                                                              [36m│[39m
+[36m│[39m WHERE r.region IN ('ap-southeast-2', 'us-west-2', 'eu-central-1') AND r.Path = '/orders'                             [36m│[39m
+[36m│[39m AND t.region IN ('ap-southeast-2', 'us-west-2', 'eu-central-1') AND t.TableName = 'orders'                           [36m│[39m
+[36m│[39m ORDER BY r.region                                                                                                    [36m│[39m
+[36m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+  [36m┌────────────────┬─────────┬─────────┬──────────────┬─────────────────────┐[39m
+  [36m│[39m [1mregion[22m         [36m│[39m [1mrunning[22m [36m│[39m [1mchanges[22m [36m│[39m [1mtable_status[22m [36m│[39m [1mdeletion_protection[22m [36m│[39m
+  [36m├────────────────┼─────────┼─────────┼──────────────┼─────────────────────┤[39m
+  [36m│[39m ap-southeast-2 [36m│[39m 1.5.0   [36m│[39m 1       [36m│[39m ACTIVE       [36m│[39m [32mtrue[39m                [36m│[39m
+  [36m│[39m eu-central-1   [36m│[39m 1.4.0   [36m│[39m 1       [36m│[39m ACTIVE       [36m│[39m [32mtrue[39m                [36m│[39m
+  [36m│[39m us-west-2      [36m│[39m 1.4.0   [36m│[39m 11      [36m│[39m ACTIVE       [36m│[39m [32mtrue[39m                [36m│[39m
+  [36m└────────────────┴─────────┴─────────┴──────────────┴─────────────────────┘[39m
+
+[35m┌[39m[35m─[39m [35m[1m05  cell_promote[22m[39m [35m───────────────────────────────────────────────────────────────────────────────────────────────────[39m[35m┐[39m
+[35m│[39m [1mpromote[22m pdx -> 1.5.0                                                                                                 [35m│[39m
+[35m│[39m [2mreason: After syd convergence, the live board confirms wave 0 serves declared 1.5.0 with orders ACTIVE and deletion[22m  [35m│[39m
+[35m│[39m [2mprotection true. pdx is the next wave (1), currently serving declared 1.4.0 with an ACTIVE, protected table; promote[22m [35m│[39m
+[35m│[39m [2monly this wave.[22m                                                                                                      [35m│[39m
+[35m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+  [32mpolicy[39m [1mpdx[22m [2m(us-west-2, wave 1)[22m  [2mdeclared 1.4.0, candidate 1.5.0[22m
+
+[33m┌[39m[33m─[39m [33m[1mAPPROVAL REQUIRED[22m[39m [33m──────────────────────────────────────────────────────────────────────────────────────────────────[39m[33m┐[39m
+[33m│[39m [1mpromote[22m [1mpdx[22m [2m(us-west-2, wave 1)[22m                                                                                      [33m│[39m
+[33m│[39m [1mdeclaration[22m  cells/pdx.env: CELL_RELEASE=1.4.0 -> [32mCELL_RELEASE=1.5.0[39m                                                 [33m│[39m
+[33m│[39m [1mcommand[22m      stackql-deploy build stack pdx --env-file cells/pdx.env                                                 [33m│[39m
+[33m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+[1mapprove? [y/N] [22my
+  [35m│[39m [2m$ stackql-deploy build stack pdx --env-file cells/pdx.env[22m
+  [35m│[39m [2m[table] exists[22m
+  [35m│[39m [2m[table] is in the desired state[22m
+  [35m│[39m [2m[table_guardrails] exists[22m
+  [35m│[39m [2m[table_guardrails] is in the desired state[22m
+  [35m│[39m [2m[release] exists[22m
+  [35m│[39m [33m[release] is not in the desired state[39m
+  [35m│[39m [35mupdating [release]...[39m
+  [35m│[39m [2m[release] exists[22m
+  [35m│[39m [2m[release] is in the desired state[22m
+  [35m│[39m [2mdeployment completed in 7.17s[22m
+  [32mAPPLIED: pdx is declared and serving 1.5.0[39m
+[2m  21.9s[22m
+
+[36m┌[39m[36m─[39m [36m[1m06  run_select_query[22m[39m [36m────────────────────────────────────────────────────────────────────────────────────────[39m [36m1.4s[39m [36m─[39m[36m┐[39m
+[36m│[39m SELECT r.region, r.value AS running, r.version AS changes, t.table_status, t.deletion_protection_enabled AS          [36m│[39m
+[36m│[39m deletion_protection                                                                                                  [36m│[39m
+[36m│[39m FROM aws.ssm.parameters_by_paths r                                                                                   [36m│[39m
+[36m│[39m INNER JOIN aws.dynamodb.tables t ON r.region = t.region                                                              [36m│[39m
+[36m│[39m WHERE r.region IN ('ap-southeast-2', 'us-west-2', 'eu-central-1') AND r.Path = '/orders'                             [36m│[39m
+[36m│[39m AND t.region IN ('ap-southeast-2', 'us-west-2', 'eu-central-1') AND t.TableName = 'orders'                           [36m│[39m
+[36m│[39m ORDER BY r.region                                                                                                    [36m│[39m
+[36m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+  [36m┌────────────────┬─────────┬─────────┬──────────────┬─────────────────────┐[39m
+  [36m│[39m [1mregion[22m         [36m│[39m [1mrunning[22m [36m│[39m [1mchanges[22m [36m│[39m [1mtable_status[22m [36m│[39m [1mdeletion_protection[22m [36m│[39m
+  [36m├────────────────┼─────────┼─────────┼──────────────┼─────────────────────┤[39m
+  [36m│[39m ap-southeast-2 [36m│[39m 1.5.0   [36m│[39m 1       [36m│[39m ACTIVE       [36m│[39m [32mtrue[39m                [36m│[39m
+  [36m│[39m eu-central-1   [36m│[39m 1.4.0   [36m│[39m 1       [36m│[39m ACTIVE       [36m│[39m [32mtrue[39m                [36m│[39m
+  [36m│[39m us-west-2      [36m│[39m 1.5.0   [36m│[39m 12      [36m│[39m ACTIVE       [36m│[39m [32mtrue[39m                [36m│[39m
+  [36m└────────────────┴─────────┴─────────┴──────────────┴─────────────────────┘[39m
+
+[2m──[22m [1mreport[22m [2m──────────────────────────────────────────────────────────────────────────────────────────────────────────────[22m
+[36m┌──────┬──────┬──────────┬───────┬───────────────────┐[39m
+[36m│[39m [1mcell[22m [36m│[39m [1mwave[22m [36m│[39m [1mdeclared[22m [36m│[39m [1mlive[22m  [36m│[39m [1mverdict[22m           [36m│[39m
+[36m├──────┼──────┼──────────┼───────┼───────────────────┤[39m
+[36m│[39m syd  [36m│[39m 0    [36m│[39m 1.5.0    [36m│[39m 1.5.0 [36m│[39m Healthy, repaired [36m│[39m
+[36m│[39m pdx  [36m│[39m 1    [36m│[39m 1.5.0    [36m│[39m 1.5.0 [36m│[39m Healthy, promoted [36m│[39m
+[36m│[39m fra  [36m│[39m 2    [36m│[39m 1.4.0    [36m│[39m 1.4.0 [36m│[39m Healthy, waiting  [36m│[39m
+[36m└──────┴──────┴──────────┴───────┴───────────────────┘[39m
+
+[1mFindings[22m
+- Initially, syd's orders table was ACTIVE but deletion protection was off.
+- CloudTrail recorded [36mjeffrey.aven[39m changing deletion protection on [36morders[39m in syd:
+  - 2026-11-09 23:46:38 UTC: off.
+  - 2026-11-09 23:50:08 UTC: on.
+  - 2026-11-09 23:53:14 UTC: off.
+- pdx and fra initially matched their declarations, with ACTIVE tables and deletion protection on.
+
+[1mActions and decisions[22m
+- Requested [36mcell_converge(syd)[39m to restore its declared guardrails. Gate and operator approved; the platform applied the
+  repair.
+- Re-read the board and confirmed syd healthy before requesting [36mcell_promote(pdx, 1.5.0)[39m. Gate and operator approved;
+  promotion applied.
+
+[1mRollout now[22m
+Advanced exactly one wave. The final board confirms all three cells have ACTIVE tables with deletion protection on.
+pdx's release-pointer write count increased from 11 to 12. fra remains on 1.4.0 and waits for the next run.
+
+[32m┌[39m[32m─[39m [32m[1mrun complete[22m[39m [32m───────────────────────────────────────────────────────────────────────────────────────────────────────[39m[32m┐[39m
+[32m│[39m [1mmodel[22m gpt-6.1-sol   [1mfinish[22m stop   [1melapsed[22m 70.3s   [1msteps[22m 7                                                            [32m│[39m
+[32m│[39m [1mtool calls[22m run_select_query=4 cell_converge=1 cell_promote=1                                                         [32m│[39m
+[32m│[39m [1mgate[22m cell_converge(syd): applied                                                                                     [32m│[39m
+[32m│[39m      cell_promote(pdx -> 1.5.0): applied                                                                             [32m│[39m
+[32m│[39m [1mtokens[22m in=61031 out=1243 total=62274                                                                                 [32m│[39m
+[32m│[39m [1maudit[22m agent/audit/stackql_mcp_server_2026-11-09T23-55-38-022Z.jsonl [1mtranscript[22m                                       [32m│[39m
+[32m│[39m agent/audit/agent_2026-11-09T23-55-38-022Z.txt                                                                       [32m│[39m
+[32m└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
