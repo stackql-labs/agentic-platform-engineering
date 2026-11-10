@@ -1,0 +1,6 @@
+/*+ exports */
+SELECT value AS ami_id
+FROM aws.ssm.parameters_by_paths
+WHERE region = '{{ region }}'
+  AND Path   = '/aws/service/ami-amazon-linux-latest'
+  AND name   = '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64'
