@@ -76,13 +76,14 @@ Rows come from the live API at query time; nothing is stored.
 
 ### 4. a second provider
 
-Reads the A records in a Cloudflare zone, in the same language.
+Reads the A records in a Cloudflare zone, found by name, in the same language.
 
 ```sql
-SELECT name, type, content, ttl
-FROM cloudflare.dns.zones_dns_records
-WHERE zone_id = '30850494d46bca19a6b11b842bdac9ff'
-  AND type = 'A';
+SELECT d.name, d.type, d.content, d.ttl
+FROM cloudflare.zones.zones z
+INNER JOIN cloudflare.dns.zones_dns_records d ON d.zone_id = z.id
+WHERE z.name = 'stackql.xyz'
+  AND d.type = 'A';
 ```
 
 Three hostnames share one address and `legacy` points somewhere else (`azure-demo` is an older record in the same zone).
@@ -93,7 +94,8 @@ Joins the DNS records to the EC2 network interfaces on the address.
 
 ```sql
 SELECT d.name AS hostname, d.content AS ip, n.instance_id, n.availability_zone
-FROM cloudflare.dns.zones_dns_records d
+FROM cloudflare.zones.zones z
+INNER JOIN cloudflare.dns.zones_dns_records d ON d.zone_id = z.id
 INNER JOIN (
   SELECT json_extract(association, '$.publicIp')  AS public_ip,
          json_extract(attachment, '$.instanceId') AS instance_id,
@@ -101,7 +103,7 @@ INNER JOIN (
   FROM aws.ec2.network_interfaces
   WHERE region = 'ap-southeast-2'
 ) n ON d.content = n.public_ip
-WHERE d.zone_id = '30850494d46bca19a6b11b842bdac9ff'
+WHERE z.name = 'stackql.xyz'
   AND d.type = 'A';
 ```
 
@@ -112,18 +114,24 @@ Three hostnames resolve to one instance: Cloudflare and AWS in one statement.
 Adds GitHub: each record's comment names the repository that owns the hostname.
 
 ```sql
-SELECT d.name AS hostname, d.content AS ip, n.instance_id, g.name AS repo, g.pushed_at AS last_push
-FROM cloudflare.dns.zones_dns_records d
-LEFT JOIN (
+WITH dns AS (
+  SELECT d.name, d.content, d.comment
+  FROM cloudflare.zones.zones z
+  INNER JOIN cloudflare.dns.zones_dns_records d ON d.zone_id = z.id
+  WHERE z.name = 'stackql.xyz'
+    AND d.type = 'A'
+),
+eni AS (
   SELECT json_extract(association, '$.publicIp')  AS public_ip,
          json_extract(attachment, '$.instanceId') AS instance_id
   FROM aws.ec2.network_interfaces
   WHERE region = 'ap-southeast-2'
-) n ON d.content = n.public_ip
-INNER JOIN github.repos.repos g ON d.comment = g.name
-WHERE d.zone_id = '30850494d46bca19a6b11b842bdac9ff'
-  AND d.type = 'A'
-  AND g.org = 'stackql';
+)
+SELECT dns.name AS hostname, dns.content AS ip, eni.instance_id, g.name AS repo, g.pushed_at AS last_push
+FROM dns
+LEFT JOIN eni ON dns.content = eni.public_ip
+INNER JOIN github.repos.repos g ON dns.comment = g.name
+WHERE g.org = 'stackql';
 ```
 
 `legacy` has no instance behind it, and its repository was last pushed in February 2025.
@@ -159,19 +167,26 @@ GROUP BY region, instance_type;
 
 ### 9. window functions
 
-Ranks repositories within their language and keeps a running total of stars.
+Reads the last 14 days of traffic to a repository, one row per day, with the change on the day before, a 7-day moving average and a running total.
 
 ```sql
-SELECT name, language, stargazers_count AS stars,
-       RANK() OVER (PARTITION BY language ORDER BY stargazers_count DESC) AS rank_in_language,
-       SUM(stargazers_count) OVER (ORDER BY stargazers_count DESC) AS running_stars
-FROM github.repos.repos
-WHERE org = 'stackql'
-ORDER BY stargazers_count DESC
-LIMIT 8;
+WITH daily AS (
+  SELECT substr(json_extract(d.value, '$.timestamp'), 1, 10) AS day,
+         json_extract(d.value, '$.count')   AS views,
+         json_extract(d.value, '$.uniques') AS visitors
+  FROM github.repos.view_traffic t, json_each(t.views) d
+  WHERE t.owner = 'stackql'
+    AND t.repo = 'stackql'
+)
+SELECT day, views, visitors,
+       views - LAG(views) OVER (ORDER BY day) AS change,
+       ROUND(AVG(views) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)) AS avg_7d,
+       SUM(views) OVER (ORDER BY day) AS running_total
+FROM daily
+ORDER BY day;
 ```
 
-Window functions over live API data.
+The API returns the days as one JSON array; `json_each` turns it into rows, and the window functions run over them.
 
 ## remove
 
@@ -184,6 +199,8 @@ stackql-deploy teardown stack intro
 
 ## notes
 
-- The zone id in statements 4 to 6 is the `stackql.xyz` zone. With another zone in `.env`, change it here and in `shell.iql`.
+- Statements 4 to 6 find the zone by name, so no zone id is written in them. With another zone in `.env`, change `stackql.xyz` here and in `shell.iql`.
+- Statement 6 puts the zone lookup in a `WITH` clause: a zone-by-name join and a `LEFT JOIN` cannot share one flat statement.
 - Statements 5 and 6 read instance ids and public addresses from `aws.ec2.network_interfaces`, because `aws.ec2.instances` in provider `v26.08.00444` returns null for `instance_id`, `state` and `public_ip_address`.
+- Statement 9 needs a GitHub token with push access to the repository; GitHub only shows traffic to people who can push.
 - Provisioned, removed and provisioned again on 10 November 2026 with stackql v1.0.888 and stackql-deploy 2.4.0. Each statement returns in 1 to 8 seconds.

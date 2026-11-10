@@ -12,15 +12,17 @@ SELECT instance_type, architecture, private_ip_address, launch_time
 FROM aws.ec2.instances
 WHERE region = 'ap-southeast-2';
 
--- 4. a second provider, the same language: A records in a Cloudflare zone
-SELECT name, type, content, ttl
-FROM cloudflare.dns.zones_dns_records
-WHERE zone_id = '30850494d46bca19a6b11b842bdac9ff'
-  AND type = 'A';
+-- 4. a second provider, the same language: A records in a Cloudflare zone, found by name
+SELECT d.name, d.type, d.content, d.ttl
+FROM cloudflare.zones.zones z
+INNER JOIN cloudflare.dns.zones_dns_records d ON d.zone_id = z.id
+WHERE z.name = 'stackql.xyz'
+  AND d.type = 'A';
 
 -- 5. two providers, one join: which hostname points at which instance
 SELECT d.name AS hostname, d.content AS ip, n.instance_id, n.availability_zone
-FROM cloudflare.dns.zones_dns_records d
+FROM cloudflare.zones.zones z
+INNER JOIN cloudflare.dns.zones_dns_records d ON d.zone_id = z.id
 INNER JOIN (
   SELECT json_extract(association, '$.publicIp')  AS public_ip,
          json_extract(attachment, '$.instanceId') AS instance_id,
@@ -28,22 +30,28 @@ INNER JOIN (
   FROM aws.ec2.network_interfaces
   WHERE region = 'ap-southeast-2'
 ) n ON d.content = n.public_ip
-WHERE d.zone_id = '30850494d46bca19a6b11b842bdac9ff'
+WHERE z.name = 'stackql.xyz'
   AND d.type = 'A';
 
 -- 6. three providers: each hostname, the instance behind it, and the repository that owns it
-SELECT d.name AS hostname, d.content AS ip, n.instance_id, g.name AS repo, g.pushed_at AS last_push
-FROM cloudflare.dns.zones_dns_records d
-LEFT JOIN (
+WITH dns AS (
+  SELECT d.name, d.content, d.comment
+  FROM cloudflare.zones.zones z
+  INNER JOIN cloudflare.dns.zones_dns_records d ON d.zone_id = z.id
+  WHERE z.name = 'stackql.xyz'
+    AND d.type = 'A'
+),
+eni AS (
   SELECT json_extract(association, '$.publicIp')  AS public_ip,
          json_extract(attachment, '$.instanceId') AS instance_id
   FROM aws.ec2.network_interfaces
   WHERE region = 'ap-southeast-2'
-) n ON d.content = n.public_ip
-INNER JOIN github.repos.repos g ON d.comment = g.name
-WHERE d.zone_id = '30850494d46bca19a6b11b842bdac9ff'
-  AND d.type = 'A'
-  AND g.org = 'stackql';
+)
+SELECT dns.name AS hostname, dns.content AS ip, eni.instance_id, g.name AS repo, g.pushed_at AS last_push
+FROM dns
+LEFT JOIN eni ON dns.content = eni.public_ip
+INNER JOIN github.repos.repos g ON dns.comment = g.name
+WHERE g.org = 'stackql';
 
 -- 7. group by: repositories and stars by language
 SELECT language, COUNT(*) AS repos, SUM(stargazers_count) AS stars
@@ -60,11 +68,18 @@ FROM aws.ec2.instances
 WHERE region IN ('ap-southeast-2', 'us-west-2', 'us-east-1', 'eu-central-1')
 GROUP BY region, instance_type;
 
--- 9. window functions: rank within a language, and a running total
-SELECT name, language, stargazers_count AS stars,
-       RANK() OVER (PARTITION BY language ORDER BY stargazers_count DESC) AS rank_in_language,
-       SUM(stargazers_count) OVER (ORDER BY stargazers_count DESC) AS running_stars
-FROM github.repos.repos
-WHERE org = 'stackql'
-ORDER BY stargazers_count DESC
-LIMIT 8;
+-- 9. window functions over real traffic: daily views of a repository, last 14 days
+WITH daily AS (
+  SELECT substr(json_extract(d.value, '$.timestamp'), 1, 10) AS day,
+         json_extract(d.value, '$.count')   AS views,
+         json_extract(d.value, '$.uniques') AS visitors
+  FROM github.repos.view_traffic t, json_each(t.views) d
+  WHERE t.owner = 'stackql'
+    AND t.repo = 'stackql'
+)
+SELECT day, views, visitors,
+       views - LAG(views) OVER (ORDER BY day) AS change,
+       ROUND(AVG(views) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)) AS avg_7d,
+       SUM(views) OVER (ORDER BY day) AS running_total
+FROM daily
+ORDER BY day;

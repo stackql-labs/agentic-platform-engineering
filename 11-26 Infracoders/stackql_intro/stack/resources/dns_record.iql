@@ -8,12 +8,12 @@ WHERE zone_id = '{{ zone_id }}'
 /*+ create */
 INSERT INTO cloudflare.dns.zones_dns_records (
   zone_id,
-  data__name,
-  data__type,
-  data__content,
-  data__ttl,
-  data__proxied,
-  data__comment
+  name,
+  type,
+  content,
+  ttl,
+  proxied,
+  comment
 )
 SELECT
   '{{ zone_id }}',
@@ -34,12 +34,12 @@ WHERE zone_id = '{{ zone_id }}'
   AND comment = '{{ owner_repo }}'
 
 /*+ update */
-UPDATE cloudflare.dns.records
-SET data__name    = '{{ host }}',
-    data__type    = 'A',
-    data__content = '{{ target_ip }}',
-    data__ttl     = 300,
-    data__comment = '{{ owner_repo }}'
+UPDATE cloudflare.dns.zones_dns_records
+SET name    = '{{ host }}',
+    type    = 'A',
+    content = '{{ target_ip }}',
+    ttl     = 300,
+    comment = '{{ owner_repo }}'
 WHERE zone_id       = '{{ zone_id }}'
   AND dns_record_id = '{{ this.record_id }}'
 
