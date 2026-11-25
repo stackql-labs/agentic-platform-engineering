@@ -1,0 +1,13 @@
+{
+  "target": "checkout-preview",
+  "source_repo": "https://code.example.invalid/platform/checkout",
+  "source_ref": "refs/heads/release/2026.12",
+  "builder": "demo-ci",
+  "signer": "demo-release-key",
+  "required_checks": ["unit", "integration", "policy"],
+  "max_critical_findings": 0,
+  "max_high_findings": 0,
+  "allowed_traffic_percent": 10,
+  "evidence_freshness_seconds": 120,
+  "approval_ttl_seconds": 300
+}
