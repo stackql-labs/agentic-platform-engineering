@@ -1,0 +1,8 @@
+{
+  "ref": "talk4_demo_rate_limit",
+  "description": "Talk 4 rate limit",
+  "path": "/talk4-check",
+  "threshold": 100,
+  "period": 10,
+  "enabled": true
+}
