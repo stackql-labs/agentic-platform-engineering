@@ -1,0 +1,42 @@
+/*+ exists */
+SELECT COUNT(*) AS count
+FROM aws.ssm.parameters_by_paths
+WHERE region = '{{ region }}'
+  AND Path   = '/{{ service }}'
+  AND name   = '{{ parameter_name }}'
+
+/*+ create */
+REPLACE aws.ssm.parameters
+SET Name      = '{{ parameter_name }}',
+    Value     = '{{ declared_release }}',
+    Type      = 'String',
+    Overwrite = true
+WHERE region = '{{ region }}'
+
+/*+ statecheck, retries=2, retry_delay=1 */
+SELECT COUNT(*) AS count
+FROM aws.ssm.parameters_by_paths
+WHERE region = '{{ region }}'
+  AND Path   = '/{{ service }}'
+  AND name   = '{{ parameter_name }}'
+  AND value  = '{{ declared_release }}'
+
+/*+ update */
+REPLACE aws.ssm.parameters
+SET Name      = '{{ parameter_name }}',
+    Value     = '{{ declared_release }}',
+    Type      = 'String',
+    Overwrite = true
+WHERE region = '{{ region }}'
+
+/*+ exports */
+SELECT value AS live_release
+FROM aws.ssm.parameters_by_paths
+WHERE region = '{{ region }}'
+  AND Path   = '/{{ service }}'
+  AND name   = '{{ parameter_name }}'
+
+/*+ delete */
+DELETE FROM aws.ssm.parameters
+WHERE region = '{{ region }}'
+  AND Name   = '{{ parameter_name }}'

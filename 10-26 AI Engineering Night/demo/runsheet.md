@@ -93,14 +93,17 @@ The **StackQL MCP server** puts that surface in front of an agent as a small, fi
 ### Quick demo, Terminal 1 (`stackql shell`, paste from `runs/shell.iql`):
 
 ```sql
--- What is live: the rate limit rule on the zone
-SELECT json_extract(rules, '$[0].description') AS description,
-       json_extract(rules, '$[0].ratelimit.requests_per_period') AS threshold,
-       json_extract(rules, '$[0].ratelimit.period') AS period,
-       json_extract(rules, '$[0].enabled') AS enabled,
-       last_updated
-FROM cloudflare.rulesets.phases
-WHERE zone_id = '30850494d46bca19a6b11b842bdac9ff' AND ruleset_phase = 'http_ratelimit';
+-- What is live: the rate limit rule on the zone, by zone name
+SELECT z.name AS zone,
+       json_extract(p.rules, '$[0].description') AS description,
+       json_extract(p.rules, '$[0].ratelimit.requests_per_period') AS threshold,
+       json_extract(p.rules, '$[0].ratelimit.period') AS period,
+       json_extract(p.rules, '$[0].enabled') AS enabled,
+       p.last_updated
+FROM cloudflare.rulesets.phases p
+INNER JOIN cloudflare.zones.zones z ON p.zone_id = z.id
+WHERE z.name = 'stackql.xyz' AND p.ruleset_phase = 'http_ratelimit';
+
 ```
 
 Threshold 5 against a declared 100, and a description that says someone meant to put it back. The `last_updated` is the 3am. (The shell wraps the description over two lines; the numbers are on the first.)
@@ -124,16 +127,19 @@ The declaration last changed before the rule did. Nobody changed the intent; som
 One question across the two (`CROSS JOIN`; the comma form of the join does not plan):
 
 ```sql
--- Did the rule change after the declaration did?
-SELECT r.last_updated AS rule_changed,
+-- Did the rule change after the declaration did? Zone by name.
+SELECT r.zone,
+       r.last_updated AS rule_changed,
        c.committed    AS declaration_changed,
-       CASE 
-		WHEN c.committed IS NULL THEN 'unknown'
-        WHEN r.last_updated > c.committed THEN 'true'
-        ELSE 'false' 
-	   END AS out_of_band
-FROM (SELECT last_updated FROM cloudflare.rulesets.phases
-      WHERE zone_id = '30850494d46bca19a6b11b842bdac9ff' AND ruleset_phase = 'http_ratelimit') r
+       CASE
+         WHEN c.committed IS NULL THEN 'unknown'
+         WHEN r.last_updated > c.committed THEN 'true'
+         ELSE 'false'
+       END AS out_of_band
+FROM (SELECT z.name AS zone, p.last_updated
+      FROM cloudflare.rulesets.phases p
+      INNER JOIN cloudflare.zones.zones z ON p.zone_id = z.id
+      WHERE z.name = 'stackql.xyz' AND p.ruleset_phase = 'http_ratelimit') r
 CROSS JOIN
      (SELECT max(json_extract(commit, '$.author.date')) AS committed FROM github.repos.commits
       WHERE owner = 'stackql-labs' AND repo = 'agentic-platform-engineering'
@@ -151,6 +157,8 @@ GROUP BY edge_response_status ORDER BY requests DESC;
 ```
 
 429s, if `scripts/traffic.sh` ran today: a burst of 30 from one address is five passes and the rest 429s, and the data set is sampled, so the count is approximate. Without it, zero rows is a valid answer; the agent says so rather than inventing a count.
+
+The analytics queries keep the literal zone id. `zone_tag` is an input to the GraphQL call and does not come back on the rows, so a join on `cloudflare.zones.zones` by name routes the call but matches nothing, and a subquery in the WHERE does not plan. If asked: the id is `SELECT id FROM cloudflare.zones.zones WHERE name = 'stackql.xyz'`.
 
 [OPTIONAL] CTEs and window functions run over live data for live analytics. The same traffic as a share of the whole:
 

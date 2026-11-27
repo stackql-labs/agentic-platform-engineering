@@ -1,0 +1,83 @@
+#
+# stackql-intro - something small to query in the StackQL primer
+#
+# One t4g.nano EC2 instance in Sydney, and four A records in a Cloudflare zone: three point
+# at the instance, one points at an address nothing runs on. Each record's comment names the
+# GitHub repository that owns the hostname. That is enough for a join across three providers.
+#
+# Provision:  source .env && stackql-deploy build stack intro
+# Remove:     source .env && stackql-deploy teardown stack intro
+#
+version: 1
+name: stackql-intro
+description: one small instance and four DNS records to query in the StackQL primer
+providers:
+  - aws::v26.08.00444
+  - cloudflare::v26.07.00424
+  - github::v26.08.00448
+
+globals:
+  - name: region
+    value: ap-southeast-2
+  - name: zone_id
+    value: "{{ CLOUDFLARE_ZONE_ID }}"
+  - name: zone_name
+    value: "{{ CLOUDFLARE_ZONE_NAME }}"
+
+resources:
+
+  - name: ami
+    type: query
+    description: the current Amazon Linux 2023 arm64 image, read from the public SSM parameter
+    props: []
+    exports:
+      - ami_id
+
+  - name: web_server
+    description: one t4g.nano in the default VPC, default security group (no inbound), no key pair
+    props:
+      - name: instance_name
+        value: stackql-intro-web
+      - name: instance_type
+        value: t4g.nano
+    exports:
+      - instance_id
+      - public_ip
+
+  - name: dns_app
+    file: dns_record.iql
+    props:
+      - name: host
+        value: app
+      - name: target_ip
+        value: "{{ public_ip }}"
+      - name: owner_repo
+        value: stackql
+  - name: dns_deploy
+    file: dns_record.iql
+    props:
+      - name: host
+        value: deploy
+      - name: target_ip
+        value: "{{ public_ip }}"
+      - name: owner_repo
+        value: stackql-deploy-rs
+  - name: dns_registry
+    file: dns_record.iql
+    props:
+      - name: host
+        value: registry
+      - name: target_ip
+        value: "{{ public_ip }}"
+      - name: owner_repo
+        value: stackql-provider-registry
+  - name: dns_legacy
+    description: a record left pointing at an address nothing runs on (203.0.113.0/24 is reserved for documentation)
+    file: dns_record.iql
+    props:
+      - name: host
+        value: legacy
+      - name: target_ip
+        value: 203.0.113.10
+      - name: owner_repo
+        value: stackql-middleware

@@ -1,0 +1,50 @@
+/*+ exists */
+SELECT s.instance_id
+FROM aws.ec2.instance_status s
+INNER JOIN aws.ec2.tags t ON s.instance_id = t.resource_id
+WHERE s.region = '{{ region }}'
+  AND s.IncludeAllInstances = true
+  AND t.region = '{{ region }}'
+  AND t.key    = 'Name'
+  AND t.value  = '{{ instance_name }}'
+  AND json_extract(s.instance_state, '$.name') IN ('pending', 'running')
+
+/*+ create */
+INSERT INTO aws.ec2.instances (
+  region,
+  ImageId,
+  InstanceType,
+  MinCount,
+  MaxCount,
+  CreditSpecification,
+  TagSpecification
+)
+SELECT
+  '{{ region }}',
+  '{{ ami_id }}',
+  '{{ instance_type }}',
+  1,
+  1,
+  '{"CpuCredits": "standard"}',
+  '[{"ResourceType": "instance", "Tag": [
+     {"Key": "Name",       "Value": "{{ instance_name }}"},
+     {"Key": "stack",      "Value": "{{ stack_name }}"},
+     {"Key": "managed-by", "Value": "stackql-deploy"}]}]'
+
+/*+ statecheck, retries=12, retry_delay=5 */
+SELECT COUNT(*) AS count
+FROM aws.ec2.instance_status
+WHERE region     = '{{ region }}'
+  AND InstanceId = '{{ this.instance_id }}'
+
+/*+ exports */
+SELECT '{{ this.instance_id }}' AS instance_id,
+       json_extract(association, '$.publicIp') AS public_ip
+FROM aws.ec2.network_interfaces
+WHERE region = '{{ region }}'
+  AND Filter = '[{"Name": "attachment.instance-id", "Value": ["{{ this.instance_id }}"]}]'
+
+/*+ delete */
+DELETE FROM aws.ec2.instances
+WHERE region     = '{{ region }}'
+  AND InstanceId = '{{ this.instance_id }}'

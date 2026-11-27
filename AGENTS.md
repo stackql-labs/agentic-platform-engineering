@@ -17,8 +17,8 @@ This public teaching repository contains talk material, recorded/live demo asset
 ## Structure
 
 - `10-26 Cloud Native AI Summit APAC/`: Summit A slides and its incident-repair demo.
-- `11-26 AI Engineer/`: Talk B, its distinct release-promotion demo, and workshop assets.
-- `11-26 Infracoders/`: StackQL provider-context talk, CFP synopsis, and separate MCP/`stackql-deploy` demo.
+- `12-26 AI Engineer/`: the AI Engineer Sydney talk in three versions for an A/B/C test, and the workshop assets. `talk-1` is a release-promotion gate (a typed capability, SSM parameters), `talk-2` is one safety setting on a table (a proposed statement, DynamoDB), and `talk-3` is the challenger built from both: the same kind of table and setting, an ops note beside it that anybody can rewrite, and three presenter-paced live beats. Each has its own deck and its own live demo on the OpenAI SDK and the StackQL MCP server, and they share no code or cloud resources, so any of them can be removed whole.
+- `11-26 Infracoders/`: the stateless IaC talk (`stackql-deploy`), its abstract, and its own three-region AWS demo: a read-only MCP surface plus a gated `stackql-deploy` write path.
 - Each event owns its talk-specific examples; do not assume demo fixtures or content are shared.
 
 Read the local README and the relevant demo/workshop runbook before changing execution instructions. This file is the source of truth for repository agent guidance; `CLAUDE.md` and `.github/copilot-instructions.md` point here.

@@ -1,0 +1,26 @@
+{
+  "name": "query-before-mutation-talk-4",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
+  },
+  "scripts": {
+    "demo": "node src/main.ts fixture",
+    "agent": "node --env-file-if-exists=.env src/main.ts model",
+    "cloud": "node --env-file-if-exists=.env src/main.ts cloud",
+    "providers": "node src/providers.ts",
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@stackql/mcp-server": "1.1.959",
+    "openai": "7.64.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "typescript": "5.9.3"
+  }
+}

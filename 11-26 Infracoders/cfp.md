@@ -1,17 +1,26 @@
-# Call for papers
+# Session abstract
 
-## Agentic Platform Engineering with StackQL
+## Stateless IaC for Agents: stackql-deploy
 
-**Proposed speaking slot:** 15–20 minutes.
+**Event:** Infracoders Melbourne, November meetup, 10 November 2026. Presentation 1. About 25 minutes including about 5 for Q&A.
 
-> As agents start operating infrastructure, the "C" in IaC shifts from Code to Context. StackQL exposes cloud and SaaS providers as data sources accessed via SQL, giving agents a query-before-mutation guardrail with no state files to drift. Demonstrated live with the StackQL MCP server (in the Anthropic connector directory) and stackql-deploy, a declarative statefile-less deployment framework.
+**Speaker:** Jeffrey Aven (StackQL Studios)
 
-## Session summary
+> stackql-deploy is an open-source, SQL-native IaC tool backed by the stackql engine. It has no state file: it queries the live cloud control plane with SQL and runs idempotent existence checks, state checks and create or update operations against the provider directly.
+>
+> With your cloud APIs exposed as a self-discoverable data layer, agents can query before they mutate, work inside policy gates, and use one interface for both provisioning and SRE tasks such as cost analysis, posture checks and incident triage. Patterns for safe agent access to the control and data planes are covered, followed by a live demo.
 
-Infrastructure automation is moving from reviewing code and applying saved plans toward agents that inspect current provider state, reason over evidence, and act through bounded interfaces. This talk introduces context as a first-class input to infrastructure operations: SQL makes provider state queryable, the StackQL MCP server lets an agent discover and read that context, and `stackql-deploy` expresses convergent desired state without a separate state file.
+## How the session delivers on it
 
-The demonstration uses a disposable local Kubernetes environment. The agent reads live deployment state through the configured StackQL MCP connector, identifies drift, and proposes a correction. The operator reviews the evidence; `stackql-deploy` then rebuilds the declared state and the presenter queries again to verify convergence. The demo is explicitly scoped to the disposable cluster and does not use production credentials or accounts.
+| Abstract | Where |
+| --- | --- |
+| No state file; existence checks, state checks, create or update against the provider | Slide 13 and the first two demo beats: a cell built from nothing, then built again with no change |
+| Cloud APIs as a self-discoverable data layer | Slides 2 to 4 and 9 to 11 |
+| Agents query before they mutate, inside policy gates | Slide 14 and the agent run: SELECTs through a read-only MCP server, then a gated `stackql-deploy build` with an approval |
+| One interface for provisioning and SRE: posture checks, incident triage, cost analysis | The demo shows a posture check (deletion protection across three regions) and triage (who changed it, from CloudTrail). Slide 17 covers cost analysis and the rest as patterns; cost analysis is not run live |
+| Patterns for safe agent access to the control and data planes | Slide 14: read wide, write narrow |
+| A live demo | [demo/](demo/README.md), with a recorded transcript as a clearly labelled fallback |
 
-The talk also covers the limits of the pattern: current context can be stale, a query is not authorization, and statefile-less deployment is not a substitute for identity boundaries, approvals, audit, or verification.
+## Earlier working title
 
-**Status:** The proposed synopsis describes the intended live demonstration. The local demo scaffold and runbook are being prepared; live MCP connector setup and `stackql-deploy` execution must be validated in the target environment before claiming a successful live run.
+This session was first outlined as "Agentic Platform Engineering with StackQL" with a local Kubernetes demo. The published abstract above replaced it; the Kubernetes scaffold was removed in favour of the three-region AWS demo.

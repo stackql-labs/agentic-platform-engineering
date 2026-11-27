@@ -1,0 +1,46 @@
+/*+ exists */
+SELECT COUNT(*) AS count
+FROM aws.dynamodb.tables
+WHERE region     = '{{ region }}'
+  AND table_name = '{{ table_name }}'
+
+/*+ create */
+INSERT INTO aws.dynamodb.tables (
+  region,
+  TableName,
+  AttributeDefinitions,
+  KeySchema,
+  BillingMode,
+  DeletionProtectionEnabled,
+  Tags
+)
+SELECT
+  '{{ region }}',
+  '{{ table_name }}',
+  '[{"AttributeName": "order_id", "AttributeType": "S"}]',
+  '[{"AttributeName": "order_id", "KeyType": "HASH"}]',
+  'PAY_PER_REQUEST',
+  true,
+  '[{"Key": "service",    "Value": "{{ service }}"},
+    {"Key": "cell",       "Value": "{{ stack_env }}"},
+    {"Key": "wave",       "Value": "{{ wave }}"},
+    {"Key": "managed-by", "Value": "stackql-deploy"}]'
+
+/*+ statecheck, retries=10, retry_delay=2 */
+SELECT COUNT(*) AS count
+FROM aws.dynamodb.tables
+WHERE region       = '{{ region }}'
+  AND TableName    = '{{ table_name }}'
+  AND table_status = 'ACTIVE'
+  AND json_extract(billing_mode_summary, '$.BillingMode') = 'PAY_PER_REQUEST'
+
+/*+ exports */
+SELECT table_status
+FROM aws.dynamodb.tables
+WHERE region    = '{{ region }}'
+  AND TableName = '{{ table_name }}'
+
+/*+ delete */
+DELETE FROM aws.dynamodb.tables
+WHERE region    = '{{ region }}'
+  AND TableName = '{{ table_name }}'

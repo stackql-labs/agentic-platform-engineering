@@ -1,0 +1,79 @@
+[33m┌[39m[33m─[39m [33m[1mAPPROVAL REQUIRED[22m[39m [33m──────────────────────────────────────────────────────────────────────────────[39m[33m┐[39m
+[33m│[39m [1mUPDATE aws.dynamodb.tables SET DeletionProtectionEnabled = true WHERE region = 'ap-southeast-2'[22m  [33m│[39m
+[33m│[39m [1mAND TableName = 'customers'[22m                                                                      [33m│[39m
+[33m│[39m                                                                                                  [33m│[39m
+[33m│[39m [1mproposed by[22m  agent (gpt-6-luna) at 05:14:53 UTC                                                  [33m│[39m
+[33m│[39m [1mit saw     [22m  deletion_protection_enabled = false                                                 [33m│[39m
+[33m│[39m [1mit read    [22m  [2mOwner: customer platform team. This is a production table. Deletion protection must[22m [33m│[39m
+[33m│[39m [1m           [22m  [2mstay on.[22m                                                                            [33m│[39m
+[33m│[39m [1mheld by    [22m  rule needs-a-person, statement 33e582ce2d15                                         [33m│[39m
+[33m└──────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+
+[32m[1mapproved by Jeffrey Aven[22m[39m, this statement only, good for 5 minutes
+
+[36m┌[39m[36m─[39m [36m[1mlook[22m[39m [36m────────────────────────────────────────────────────────────────────────────────────[39m [36m0.4s[39m [36m─[39m[36m┐[39m
+[36m│[39m [1mSELECT table_name, table_status, deletion_protection_enabled FROM aws.dynamodb.tables WHERE[22m      [36m│[39m
+[36m│[39m [1mregion = 'ap-southeast-2' AND TableName = 'customers'[22m                                            [36m│[39m
+[36m│[39m                                                                                                  [36m│[39m
+[36m│[39m [36m┌────────────┬──────────────┬─────────────────────────────┐[39m                                      [36m│[39m
+[36m│[39m [36m│[39m [1mtable_name[22m [36m│[39m [1mtable_status[22m [36m│[39m [1mdeletion_protection_enabled[22m [36m│[39m                                      [36m│[39m
+[36m│[39m [36m├────────────┼──────────────┼─────────────────────────────┤[39m                                      [36m│[39m
+[36m│[39m [36m│[39m customers  [36m│[39m ACTIVE       [36m│[39m [31m[1mfalse[22m[39m                       [36m│[39m                                      [36m│[39m
+[36m│[39m [36m└────────────┴──────────────┴─────────────────────────────┘[39m                                      [36m│[39m
+[36m└──────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+
+[32m┌[39m[32m─[39m [32m[1mAPPLIED[22m[39m [32m─────────────────────────────────────────────────────────────────────────────────[39m [32m0.2s[39m [32m─[39m[32m┐[39m
+[32m│[39m [1mnever     [22m  [32mok[39m  one statement, and it does not delete                                            [32m│[39m
+[32m│[39m [1mone door  [22m  [32mok[39m  customers, this one setting, on                                                  [32m│[39m
+[32m│[39m [1mlook first[22m  [32mok[39m  read 0 s ago: deletion protection is off                                         [32m│[39m
+[32m│[39m [1ma person  [22m  [32mok[39m  approved by Jeffrey Aven, this statement only                                    [32m│[39m
+[32m│[39m                                                                                                  [32m│[39m
+[32m│[39m [1mUPDATE aws.dynamodb.tables SET DeletionProtectionEnabled = true WHERE region = 'ap-southeast-2'[22m  [32m│[39m
+[32m│[39m [1mAND TableName = 'customers'[22m                                                                      [32m│[39m
+[32m│[39m                                                                                                  [32m│[39m
+[32m│[39m [32mSent through the server in safe mode. It asked first; the answer was Jeffrey Aven's approval.[39m    [32m│[39m
+[32m└──────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+
+[32m┌[39m[32m─[39m [32m[1mlook again[22m[39m [32m──────────────────────────────────────────────────────────────────────────────[39m [32m0.2s[39m [32m─[39m[32m┐[39m
+[32m│[39m [1mSELECT table_name, table_status, deletion_protection_enabled FROM aws.dynamodb.tables WHERE[22m      [32m│[39m
+[32m│[39m [1mregion = 'ap-southeast-2' AND TableName = 'customers'[22m                                            [32m│[39m
+[32m│[39m                                                                                                  [32m│[39m
+[32m│[39m [36m┌────────────┬──────────────┬─────────────────────────────┐[39m                                      [32m│[39m
+[32m│[39m [36m│[39m [1mtable_name[22m [36m│[39m [1mtable_status[22m [36m│[39m [1mdeletion_protection_enabled[22m [36m│[39m                                      [32m│[39m
+[32m│[39m [36m├────────────┼──────────────┼─────────────────────────────┤[39m                                      [32m│[39m
+[32m│[39m [36m│[39m customers  [36m│[39m ACTIVE       [36m│[39m [32m[1mtrue[22m[39m                        [36m│[39m                                      [32m│[39m
+[32m│[39m [36m└────────────┴──────────────┴─────────────────────────────┘[39m                                      [32m│[39m
+[32m└──────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+
+[32m┌[39m[32m─[39m [32m[1mAGAIN - nothing to do[22m[39m [32m───────────────────────────────────────────────────────[39m [32mrule: already-so[39m [32m─[39m[32m┐[39m
+[32m│[39m [2mUPDATE aws.dynamodb.tables SET DeletionProtectionEnabled = true WHERE region = 'ap-southeast-2'[22m  [32m│[39m
+[32m│[39m [2mAND TableName = 'customers'[22m                                                                      [32m│[39m
+[32m│[39m                                                                                                  [32m│[39m
+[32m│[39m [1mnever     [22m  [32mok[39m  one statement, and it does not delete                                            [32m│[39m
+[32m│[39m [1mone door  [22m  [32mok[39m  customers, this one setting, on                                                  [32m│[39m
+[32m│[39m [1mlook first[22m  [32mok[39m  deletion protection is already on. Nothing to do, nothing sent                   [32m│[39m
+[32m│[39m [1ma person  [22m  [2m- [22m  [2mnot needed[22m                                                                       [32m│[39m
+[32m│[39m                                                                                                  [32m│[39m
+[32m│[39m [32mThe same statement, a second time. The end state already holds, so nothing was sent.[39m             [32m│[39m
+[32m└──────────────────────────────────────────────────────────────────────────────────────────────────┘[39m
+
+[2mthe record: npm run audit[22m
+[1mthe record[22m[2m   who proposed, who decided, who approved, what ran[22m
+[2m┌──────────┬──────────────┬───────────┬────────────────┬───────────────────────────────────────────┐[22m
+[2m│[22m [1mutc[22m      [2m│[22m [1mactor[22m        [2m│[22m [1maction[22m    [2m│[22m [1mrule[22m           [2m│[22m [1mdetail[22m                                    [2m│[22m
+[2m├──────────┼──────────────┼───────────┼────────────────┼───────────────────────────────────────────┤[22m
+[2m│[22m 05:14:47 [2m│[22m [2m[1moperator[22m[22m     [2m│[22m staged    [2m│[22m                [2m│[22m protection off, nothing held              [2m│[22m
+[2m│[22m 05:14:50 [2m│[22m [35m[1magent[22m[39m        [2m│[22m looked    [2m│[22m                [2m│[22m deletion_protection_enabled = false       [2m│[22m
+[2m│[22m 05:14:52 [2m│[22m [35m[1magent[22m[39m        [2m│[22m read-note [2m│[22m                [2m│[22m Owner: customer platform team. This is... [2m│[22m
+[2m│[22m 05:14:53 [2m│[22m [35m[1magent[22m[39m        [2m│[22m proposed  [2m│[22m                [2m│[22m statement 33e582ce2d15                    [2m│[22m
+[2m│[22m 05:14:53 [2m│[22m [33m[1mpolicy[22m[39m       [2m│[22m [33mheld[39m      [2m│[22m needs-a-person [2m│[22m nobody has approved this statement. Th... [2m│[22m
+[2m│[22m 05:14:56 [2m│[22m [32m[1mJeffrey Aven[22m[39m [2m│[22m [32mapproved[39m  [2m│[22m                [2m│[22m this statement only, good for 300 s       [2m│[22m
+[2m│[22m 05:14:57 [2m│[22m [36m[1msystem[22m[39m       [2m│[22m looked    [2m│[22m                [2m│[22m deletion_protection_enabled = false       [2m│[22m
+[2m│[22m 05:14:57 [2m│[22m [33m[1mpolicy[22m[39m       [2m│[22m [32mallowed[39m   [2m│[22m approved       [2m│[22m approved by Jeffrey Aven, this stateme... [2m│[22m
+[2m│[22m 05:14:57 [2m│[22m [36m[1mserver[22m[39m       [2m│[22m asked     [2m│[22m                [2m│[22m asked first; the approval answered        [2m│[22m
+[2m│[22m 05:14:57 [2m│[22m [36m[1msystem[22m[39m       [2m│[22m [32mapplied[39m   [2m│[22m                [2m│[22m approved by Jeffrey Aven                  [2m│[22m
+[2m│[22m 05:14:59 [2m│[22m [36m[1msystem[22m[39m       [2m│[22m [32mverified[39m  [2m│[22m                [2m│[22m deletion_protection_enabled = true        [2m│[22m
+[2m│[22m 05:14:59 [2m│[22m [33m[1mpolicy[22m[39m       [2m│[22m [32mnoop[39m      [2m│[22m already-so     [2m│[22m the same statement again: nothing sent    [2m│[22m
+[2m└──────────┴──────────────┴───────────┴────────────────┴───────────────────────────────────────────┘[22m
+
+[2m33e582ce2d15[22m  UPDATE aws.dynamodb.tables SET DeletionProtectionEnabled = true WHERE region = 'ap-southeast-2' AND TableName = 'customers'

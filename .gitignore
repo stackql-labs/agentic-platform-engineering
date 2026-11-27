@@ -11,3 +11,5 @@
 **/runs/*
 !**/runs/.gitkeep
 /ref
+logs/
+~$*.pptx

@@ -1,0 +1,6 @@
+node_modules/
+.env
+stackql-credentials.env
+evidence/
+.stackql/
+*.log

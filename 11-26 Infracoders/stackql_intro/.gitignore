@@ -1,0 +1,4 @@
+.env
+.stackql/
+*.log
+.stackql-deploy-exports

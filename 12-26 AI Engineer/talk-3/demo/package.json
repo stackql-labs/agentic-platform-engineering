@@ -1,0 +1,35 @@
+{
+  "name": "query-before-mutation-talk-3-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "One safety setting on a production table, and an ops note that lies: the OpenAI SDK (Responses API), the StackQL MCP server over stdio from npm, a policy gate in code, and three presenter-paced beats",
+  "engines": {
+    "node": "^22.23.4 || >=24.22.1"
+  },
+  "scripts": {
+    "stage": "node src/stage.ts",
+    "stage:hot": "node src/stage.ts --hot",
+    "bait": "node src/stage.ts --bait",
+    "agent": "node src/agent.ts",
+    "approve": "node src/approve.ts",
+    "audit": "node src/audit.ts",
+    "beat1": "node src/agent.ts --paced",
+    "beat2": "node src/approve.ts --paced --wait-at-end && node src/audit.ts",
+    "beat3": "node src/stage.ts --bait --paced --wait-at-end && node src/agent.ts --paced --wait-at-end && node src/audit.ts",
+    "tools": "node src/agent.ts --tools",
+    "replay": "node src/replay.ts",
+    "teardown": "node src/stage.ts --teardown",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.ts\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@stackql/mcp-server": "1.1.959",
+    "openai": "7.64.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "typescript": "5.9.3"
+  }
+}

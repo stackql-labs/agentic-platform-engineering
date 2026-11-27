@@ -1,41 +1,63 @@
-# Local-only declarative demo. Build with run-deploy.ps1 so the exact target and
-# explicit confirmation are checked before stackql-deploy is allowed to write.
+#
+# orders-cell - one cell of the "orders" service, as a stackql-deploy stack
+#
+# The same declaration is asserted in every cell. A cell is a
+# stackql-deploy environment (syd, pdx, fra); what differs per cell lives in
+# cells/<cell>.env: its region, its rollout wave and the release it runs.
+#
+# No state file. Every build asks the provider what is there (exists), compares it with
+# what is declared here (statecheck), and only then creates or updates. Run it against a
+# converged cell and it changes nothing; run it against a drifted cell and it converges it.
+#
+# Build:    stackql-deploy build stack syd --env-file cells/syd.env
+# Test:     stackql-deploy test stack syd --env-file cells/syd.env
+# Teardown: scripts/teardown.sh syd   (deletion protection has to come off first)
+#
 version: 1
-name: infracoders-context-demo
-description: A small, statefile-less StackQL deployment for the Infracoders talk
+name: orders-cell
+description: one cell of the orders service - the same declaration in every region
 providers:
-  - k8s::v26.08.00453
+  - aws::v26.08.00444
 
 globals:
-  - name: cluster_addr
-    value: "{{ KUBE_CLUSTER_ADDR }}"
-  - name: protocol
-    value: "{{ KUBE_PROTOCOL }}"
-  - name: namespace
-    value: "{{ K8S_NAMESPACE }}"
-  - name: demo_label_key
-    value: purpose
-  - name: demo_label_value
-    value: infracoders-demo
+  - name: service
+    value: orders
+  - name: region
+    description: the AWS region this cell lives in (cells/<cell>.env)
+    value: "{{ CELL_REGION }}"
+  - name: wave
+    description: the rollout wave this cell belongs to; wave 0 is the canary
+    value: "{{ CELL_WAVE }}"
+  - name: declared_release
+    description: the release this cell is declared to run; a promotion changes this line in the cell file
+    value: "{{ CELL_RELEASE }}"
 
 resources:
-  - name: namespace
-    description: Dedicated namespace for this local demo only
-    props:
-      - name: name
-        value: "{{ namespace }}"
-    exports:
-      - namespace
 
-  - name: context_demo
-    description: One labelled deployment used to show provider context and convergence
-    file: resources/deployment.iql
+  - name: table
+    description: the cell's orders table - on-demand capacity, tagged with its cell and its wave
     props:
-      - name: name
-        value: context-demo
-      - name: image
-        value: nginx:1.27-alpine
-      - name: replicas
-        value: 1
-      - name: container_port
-        value: 80
+      - name: table_name
+        value: "{{ service }}"
+    exports:
+      - table_status
+
+  - name: table_guardrails
+    description: |
+      deletion protection on the orders table. This is the posture scripts/drift.sh
+      breaks; the statecheck compares it, so a build after the drift runs the update
+      anchor and puts it back.
+    props:
+      - name: table_name
+        value: "{{ service }}"
+
+  - name: release
+    description: |
+      the release pointer: the version this cell serves. It stands in for whatever your
+      deploy flips (a Lambda alias, a task definition, a launch template version). Same
+      name in every region, so one statement reads the whole rollout.
+    props:
+      - name: parameter_name
+        value: "/{{ service }}/release"
+    exports:
+      - live_release
